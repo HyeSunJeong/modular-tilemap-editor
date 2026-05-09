@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>Tilemap Editor MVP — 32×32</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: 'Segoe UI', sans-serif;
+    background: #1a1a1a; color: #eee;
+    display: flex; height: 100vh; overflow: hidden;
+  }
+  #sidebar {
+    width: 260px; padding: 14px;
+    border-right: 1px solid #333;
+    overflow-y: auto;
+    flex-shrink: 0;
+  }
+  #main {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; padding: 16px;
+  }
+  h2 {
+    margin: 14px 0 6px; font-size: 12px; color: #888;
+    text-transform: uppercase; letter-spacing: 0.05em;
+    font-weight: 600;
+  }
+  h2:first-child { margin-top: 0; }
+  .palette-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 7px 9px; margin: 3px 0;
+    border: 1px solid #2c2c2c; border-radius: 4px;
+    cursor: pointer; user-select: none;
+    transition: background 0.1s, border-color 0.1s;
+  }
+  .palette-item:hover { background: #252525; }
+  .palette-item.selected { border-color: #5a9bdc; background: #1a2f4a; }
+  .swatch {
+    width: 22px; height: 22px;
+    border: 1px solid #555; border-radius: 2px;
+    flex-shrink: 0;
+  }
+  .palette-name { flex: 1; font-size: 13px; }
+  .palette-fp { font-size: 11px; color: #888; }
+  .tools, .actions { display: flex; flex-direction: column; gap: 4px; }
+  .tools { flex-direction: row; }
+  .tool-btn, .action-btn {
+    padding: 8px 10px; background: #252525;
+    border: 1px solid #3a3a3a; color: #eee;
+    cursor: pointer; border-radius: 4px;
+    font-size: 13px; font-family: inherit;
+    transition: background 0.1s, border-color 0.1s;
+  }
+  .tool-btn { flex: 1; }
+  .tool-btn.active { background: #1a3a5a; border-color: #5a9bdc; }
+  .tool-btn:hover, .action-btn:hover { background: #303030; }
+  .action-btn:active { background: #1a3a5a; }
+  .info {
+    font-size: 12px; color: #888; line-height: 1.7;
+    padding: 8px 4px;
+  }
+  .info kbd {
+    display: inline-block;
+    padding: 1px 5px; background: #2a2a2a;
+    border: 1px solid #444; border-radius: 3px;
+    font-family: monospace; font-size: 11px;
+    color: #ccc;
+  }
+  #canvas-wrap {
+    position: relative;
+    box-shadow: 0 0 0 1px #444, 0 8px 24px rgba(0,0,0,0.4);
+  }
+  #canvas {
+    display: block;
+    background: #0a0a0a;
+    cursor: crosshair;
+    image-rendering: pixelated;
+  }
+  #status {
+    color: #888; font-size: 12px; margin-top: 12px;
+    height: 16px; min-width: 320px; text-align: center;
+    font-family: monospace;
+  }
+  #drop-overlay {
+    position: fixed; inset: 0;
+    background: rgba(20, 80, 160, 0.35);
+    border: 4px dashed #5a9bdc;
+    display: none; align-items: center; justify-content: center;
+    font-size: 22px; color: #fff;
+    pointer-events: none; z-index: 100;
+  }
+  #drop-overlay.visible { display: flex; }
+  hr {
+    border: none; border-top: 1px solid #2a2a2a;
+    margin: 14px 0;
+  }
+</style>
+</head>
+<body>
+
+<div id="sidebar">
+  <h2>팔레트</h2>
+  <div id="palette"></div>
+
+  <h2>도구</h2>
+  <div class="tools">
+    <button class="tool-btn active" data-tool="pen">펜</button>
+    <button class="tool-btn" data-tool="bucket">채우기</button>
+    <button class="tool-btn" data-tool="eraser">지우개</button>
+  </div>
+
+  <h2>편집</h2>
+  <div class="actions">
+    <button class="action-btn" id="btn-undo">되돌리기 (Ctrl+Z)</button>
+    <button class="action-btn" id="btn-redo">다시 실행 (Ctrl+Y)</button>
+    <button class="action-btn" id="btn-clear">전체 삭제</button>
+  </div>
+
+  <h2>파일</h2>
+  <div class="actions">
+    <button class="action-btn" id="btn-save">JSON 저장</button>
+    <button class="action-btn" id="btn-load">JSON 불러오기</button>
+  </div>
+
+  <h2>정보</h2>
+  <div class="info">
+    그리드: 32 × 32<br>
+    타일: 1m × 1m<br>
+    좌표: (x=열, y=행), (0,0)=좌상단<br>
+    <hr>
+    <kbd>좌클릭</kbd> 칠하기/드래그<br>
+    <kbd>우클릭</kbd> 지우개<br>
+    <kbd>Ctrl+Z</kbd>/<kbd>Y</kbd> 되돌리기<br>
+    JSON 파일을 창에 드래그해도 로드됨
+  </div>
+</div>
+
+<div id="main">
+  <div id="canvas-wrap">
+    <canvas id="canvas" width="640" height="640"></canvas>
+  </div>
+  <div id="status">준비 완료</div>
+</div>
+
+<div id="drop-overlay">JSON 파일을 여기에 드롭</div>
+<input type="file" id="file-input" accept=".json" style="display:none;">
+
+<script>
+// ───── Config ─────────────────────────────────────────
+const GRID_W = 32, GRID_H = 32;
+const CELL_PX = 20;
+const TILE_SIZE_M = 1.0;
+
+const MODULES = [
+  { id: "block_1m_grass", name: "1M 잔디",   color: "#4a9a4a", footprint: [1,1] },
+  { id: "block_1m_dirt",  name: "1M 흙",     color: "#7a5a3a", footprint: [1,1] },
+  { id: "block_1m_stone", name: "1M 돌",     color: "#9a9a9a", footprint: [1,1] },
+  { id: "block_5m_stone", name: "5M 돌",     color: "#5a5a5a", footprint: [5,5] },
+  { id: "tree",           name: "나무",      color: "#0e5a1a", footprint: [1,1] },
+  { id: "building_3x3",   name: "건물(3×3)", color: "#aa3434", footprint: [3,3] },
+  { id: "mountain_5x5",   name: "산(5×5)",   color: "#444a4e", footprint: [5,5] },
+];
+
+// ───── State ──────────────────────────────────────────
+let state = {
+  grid: makeEmptyGrid(),       // grid[y][x] = placement_id or null
+  placements: {},              // id -> { module, x, y, footprint, yaw }
+};
+let selectedModule = "block_1m_grass";
+let currentTool = "pen";
+let isDrawing = false;
+let drawingButton = 0;
+let lastDrawCell = null;
+let undoStack = [];
+let redoStack = [];
+let placementCounter = 0;
+
+function makeEmptyGrid() {
+  const g = [];
+  for (let y = 0; y < GRID_H; y++) g.push(new Array(GRID_W).fill(null));
+  return g;
+}
+function newPid() { return "p" + (++placementCounter); }
+function getModule(id) { return MODULES.find(m => m.id === id); }
+
+// ───── Undo / Redo ────────────────────────────────────
+function snapshot() {
+  return {
+    grid: state.grid.map(r => r.slice()),
+    placements: JSON.parse(JSON.stringify(state.placements)),
+    counter: placementCounter,
+  };
+}
+function restore(snap) {
+  state.grid = snap.grid.map(r => r.slice());
+  state.placements = JSON.parse(JSON.stringify(snap.placements));
+  placementCounter = snap.counter;
+}
+function pushUndo() {
+  undoStack.push(snapshot());
+  if (undoStack.length > 100) undoStack.shift();
+  redoStack = [];
+}
+function undo() {
+  if (!undoStack.length) return;
+  redoStack.push(snapshot());
+  restore(undoStack.pop());
+  draw();
+  setStatus("되돌림");
+}
+function redoFn() {
+  if (!redoStack.length) return;
+  undoStack.push(snapshot());
+  restore(redoStack.pop());
+  draw();
+  setStatus("다시 실행");
+}
+
+// ───── Operations ─────────────────────────────────────
+function inBounds(x, y) {
+  return x >= 0 && x < GRID_W && y >= 0 && y < GRID_H;
+}
+
+function clearPlacement(pid) {
+  const p = state.placements[pid];
+  if (!p) return;
+  const [w, h] = p.footprint;
+  for (let yy = p.y; yy < p.y + h; yy++)
+    for (let xx = p.x; xx < p.x + w; xx++)
+      if (state.grid[yy][xx] === pid) state.grid[yy][xx] = null;
+  delete state.placements[pid];
+}
+
+function clearArea(x, y, w, h) {
+  const toRemove = new Set();
+  for (let yy = y; yy < y + h; yy++)
+    for (let xx = x; xx < x + w; xx++)
+      if (inBounds(xx, yy) && state.grid[yy][xx])
+        toRemove.add(state.grid[yy][xx]);
+  toRemove.forEach(clearPlacement);
+}
+
+function placeModule(moduleId, x, y) {
+  const m = getModule(moduleId);
+  if (!m) return false;
+  const [w, h] = m.footprint;
+  if (x < 0 || y < 0 || x + w > GRID_W || y + h > GRID_H) {
+    setStatus(`범위 초과 (${m.name} 는 ${w}×${h}, 위치 ${x},${y})`);
+    return false;
+  }
+  // Skip if same module already exactly here
+  const existing = state.grid[y][x];
+  if (existing) {
+    const ep = state.placements[existing];
+    if (ep.module === moduleId && ep.x === x && ep.y === y) return false;
+  }
+  clearArea(x, y, w, h);
+  const pid = newPid();
+  state.placements[pid] = {
+    module: moduleId, x, y,
+    footprint: m.footprint.slice(), yaw: 0,
+  };
+  for (let yy = y; yy < y + h; yy++)
+    for (let xx = x; xx < x + w; xx++)
+      state.grid[yy][xx] = pid;
+  return true;
+}
+
+function eraseAt(x, y) {
+  if (!inBounds(x, y)) return;
+  const pid = state.grid[y][x];
+  if (pid) clearPlacement(pid);
+}
+
+function bucketFill(x, y, moduleId) {
+  const m = getModule(moduleId);
+  if (!m) return false;
+  if (m.footprint[0] !== 1 || m.footprint[1] !== 1) {
+    setStatus("채우기는 1×1 모듈만 사용 가능합니다");
+    return false;
+  }
+  if (!inBounds(x, y)) return false;
+  const startPid = state.grid[y][x];
+  const startModule = startPid ? state.placements[startPid].module : null;
+  if (startModule === moduleId) return false;
+
+  const visited = new Set();
+  const queue = [[x, y]];
+  let count = 0;
+  while (queue.length) {
+    const [cx, cy] = queue.shift();
+    const key = cx + "," + cy;
+    if (visited.has(key)) continue;
+    if (!inBounds(cx, cy)) continue;
+    const pid = state.grid[cy][cx];
+    const mod = pid ? state.placements[pid].module : null;
+    if (mod !== startModule) continue;
+    visited.add(key);
+    placeModule(moduleId, cx, cy);
+    count++;
+    queue.push([cx+1,cy],[cx-1,cy],[cx,cy+1],[cx,cy-1]);
+  }
+  setStatus(`채우기: ${count}칸`);
+  return true;
+}
+
+// ───── Drawing ────────────────────────────────────────
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+function draw() {
+  // Background
+  ctx.fillStyle = "#0a0a0a";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Cells
+  for (let y = 0; y < GRID_H; y++) {
+    for (let x = 0; x < GRID_W; x++) {
+      const pid = state.grid[y][x];
+      if (pid) {
+        const p = state.placements[pid];
+        const m = getModule(p.module);
+        ctx.fillStyle = m.color;
+        ctx.fillRect(x * CELL_PX, y * CELL_PX, CELL_PX, CELL_PX);
+      }
+    }
+  }
+
+  // Thin grid
+  ctx.strokeStyle = "#1f1f1f";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let i = 0; i <= GRID_W; i++) {
+    ctx.moveTo(i * CELL_PX + 0.5, 0);
+    ctx.lineTo(i * CELL_PX + 0.5, GRID_H * CELL_PX);
+  }
+  for (let i = 0; i <= GRID_H; i++) {
+    ctx.moveTo(0, i * CELL_PX + 0.5);
+    ctx.lineTo(GRID_W * CELL_PX, i * CELL_PX + 0.5);
+  }
+  ctx.stroke();
+
+  // Major grid (every 5)
+  ctx.strokeStyle = "#3a3a3a";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let i = 0; i <= GRID_W; i += 5) {
+    ctx.moveTo(i * CELL_PX + 0.5, 0);
+    ctx.lineTo(i * CELL_PX + 0.5, GRID_H * CELL_PX);
+  }
+  for (let i = 0; i <= GRID_H; i += 5) {
+    ctx.moveTo(0, i * CELL_PX + 0.5);
+    ctx.lineTo(GRID_W * CELL_PX, i * CELL_PX + 0.5);
+  }
+  ctx.stroke();
+
+  // Placement borders for multi-cell
+  ctx.strokeStyle = "rgba(255,255,255,0.22)";
+  ctx.lineWidth = 1;
+  for (const pid in state.placements) {
+    const p = state.placements[pid];
+    if (p.footprint[0] === 1 && p.footprint[1] === 1) continue;
+    ctx.strokeRect(
+      p.x * CELL_PX + 1.5, p.y * CELL_PX + 1.5,
+      p.footprint[0] * CELL_PX - 3, p.footprint[1] * CELL_PX - 3
+    );
+  }
+}
+
+// ───── Mouse ──────────────────────────────────────────
+function mouseToCell(e) {
+  const r = canvas.getBoundingClientRect();
+  return {
+    x: Math.floor((e.clientX - r.left) / CELL_PX),
+    y: Math.floor((e.clientY - r.top) / CELL_PX),
+  };
+}
+
+canvas.addEventListener("mousedown", (e) => {
+  e.preventDefault();
+  const { x, y } = mouseToCell(e);
+  if (!inBounds(x, y)) return;
+  isDrawing = true;
+  drawingButton = e.button;
+  lastDrawCell = null;
+  pushUndo();
+  performToolAt(x, y, e.button);
+  lastDrawCell = { x, y };
+  draw();
+});
+
+canvas.addEventListener("mousemove", (e) => {
+  const { x, y } = mouseToCell(e);
+  if (inBounds(x, y)) setStatus(`좌표 (${x}, ${y})`);
+  if (!isDrawing) return;
+  if (lastDrawCell && lastDrawCell.x === x && lastDrawCell.y === y) return;
+  if (!inBounds(x, y)) return;
+  performToolAt(x, y, drawingButton, true);
+  lastDrawCell = { x, y };
+  draw();
+});
+
+window.addEventListener("mouseup", () => { isDrawing = false; lastDrawCell = null; });
+canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+
+function performToolAt(x, y, button, isDrag = false) {
+  const isRight = button === 2;
+  if (isRight || currentTool === "eraser") {
+    eraseAt(x, y);
+  } else if (currentTool === "bucket") {
+    if (!isDrag) bucketFill(x, y, selectedModule);
+  } else {
+    placeModule(selectedModule, x, y);
+  }
+}
+
+// ───── Palette ────────────────────────────────────────
+function buildPalette() {
+  const el = document.getElementById("palette");
+  MODULES.forEach(m => {
+    const item = document.createElement("div");
+    item.className = "palette-item" + (m.id === selectedModule ? " selected" : "");
+    item.dataset.id = m.id;
+    item.innerHTML =
+      `<div class="swatch" style="background:${m.color}"></div>` +
+      `<div class="palette-name">${m.name}</div>` +
+      `<div class="palette-fp">${m.footprint[0]}×${m.footprint[1]}</div>`;
+    item.addEventListener("click", () => {
+      selectedModule = m.id;
+      document.querySelectorAll(".palette-item").forEach(e => e.classList.remove("selected"));
+      item.classList.add("selected");
+      setStatus(`선택: ${m.name}`);
+    });
+    el.appendChild(item);
+  });
+}
+
+// ───── Tool buttons ───────────────────────────────────
+document.querySelectorAll(".tool-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    currentTool = btn.dataset.tool;
+    document.querySelectorAll(".tool-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+  });
+});
+
+// ───── Save / Load ────────────────────────────────────
+function exportJSON() {
+  const placements = Object.values(state.placements)
+    .sort((a, b) => a.y - b.y || a.x - b.x)
+    .map(p => ({
+      module: p.module, x: p.x, y: p.y,
+      footprint: p.footprint, yaw: p.yaw,
+    }));
+  const data = {
+    version: 1,
+    size: [GRID_W, GRID_H],
+    tile_size_m: TILE_SIZE_M,
+    coord_system: { origin: "top-left", x_axis: "right", y_axis: "down" },
+    modules_legend: MODULES.map(m => ({
+      id: m.id, name: m.name, color: m.color, footprint: m.footprint,
+    })),
+    placements,
+  };
+  const json = JSON.stringify(data, null, 2);
+  const blob = new Blob([json], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  const ts = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+  a.href = url;
+  a.download = `tilemap_${ts}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  setStatus(`${placements.length}개 배치 저장됨`);
+}
+
+function importJSON(text) {
+  try {
+    const data = JSON.parse(text);
+    if (!data.placements || !Array.isArray(data.placements)) throw new Error("placements 배열 없음");
+    pushUndo();
+    state.grid = makeEmptyGrid();
+    state.placements = {};
+    placementCounter = 0;
+    let n = 0;
+    for (const p of data.placements) {
+      if (placeModule(p.module, p.x, p.y)) n++;
+    }
+    draw();
+    setStatus(`${n}개 배치 불러옴`);
+  } catch (err) {
+    setStatus("JSON 로드 실패: " + err.message);
+  }
+}
+
+document.getElementById("btn-save").addEventListener("click", exportJSON);
+document.getElementById("btn-load").addEventListener("click", () => {
+  document.getElementById("file-input").click();
+});
+document.getElementById("file-input").addEventListener("change", (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = () => importJSON(r.result);
+  r.readAsText(f);
+  e.target.value = "";
+});
+
+// Drag & drop
+const dropOverlay = document.getElementById("drop-overlay");
+let dragCounter = 0;
+window.addEventListener("dragenter", (e) => {
+  if (!e.dataTransfer || !Array.from(e.dataTransfer.types).includes("Files")) return;
+  dragCounter++;
+  dropOverlay.classList.add("visible");
+});
+window.addEventListener("dragleave", () => {
+  dragCounter--;
+  if (dragCounter <= 0) { dragCounter = 0; dropOverlay.classList.remove("visible"); }
+});
+window.addEventListener("dragover", (e) => { e.preventDefault(); });
+window.addEventListener("drop", (e) => {
+  e.preventDefault();
+  dragCounter = 0;
+  dropOverlay.classList.remove("visible");
+  const f = e.dataTransfer.files[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = () => importJSON(r.result);
+  r.readAsText(f);
+});
+
+// ───── Buttons ────────────────────────────────────────
+document.getElementById("btn-undo").addEventListener("click", undo);
+document.getElementById("btn-redo").addEventListener("click", redoFn);
+document.getElementById("btn-clear").addEventListener("click", () => {
+  if (!confirm("전체 삭제할까요?")) return;
+  pushUndo();
+  state.grid = makeEmptyGrid();
+  state.placements = {};
+  placementCounter = 0;
+  draw();
+  setStatus("전체 삭제됨");
+});
+
+// ───── Keyboard ───────────────────────────────────────
+window.addEventListener("keydown", (e) => {
+  if (e.ctrlKey || e.metaKey) {
+    if (e.key === "z" || e.key === "Z") { e.preventDefault(); undo(); }
+    if (e.key === "y" || e.key === "Y") { e.preventDefault(); redoFn(); }
+  }
+});
+
+// ───── Status ─────────────────────────────────────────
+function setStatus(msg) { document.getElementById("status").textContent = msg; }
+
+// ───── Init ───────────────────────────────────────────
+buildPalette();
+draw();
+setStatus("좌측 팔레트에서 모듈 선택 후 캔버스에 그리세요");
+</script>
+</body>
+</html>

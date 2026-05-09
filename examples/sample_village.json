@@ -1,0 +1,2250 @@
+{
+  "version": 1,
+  "size": [
+    32,
+    32
+  ],
+  "tile_size_m": 1,
+  "coord_system": {
+    "origin": "top-left",
+    "x_axis": "right",
+    "y_axis": "down"
+  },
+  "modules_legend": [
+    {
+      "id": "block_1m_grass",
+      "name": "1M 잔디",
+      "color": "#4a9a4a",
+      "footprint": [
+        1,
+        1
+      ]
+    },
+    {
+      "id": "block_1m_dirt",
+      "name": "1M 흙",
+      "color": "#7a5a3a",
+      "footprint": [
+        1,
+        1
+      ]
+    },
+    {
+      "id": "block_1m_stone",
+      "name": "1M 돌",
+      "color": "#9a9a9a",
+      "footprint": [
+        1,
+        1
+      ]
+    },
+    {
+      "id": "block_5m_stone",
+      "name": "5M 돌",
+      "color": "#5a5a5a",
+      "footprint": [
+        5,
+        5
+      ]
+    },
+    {
+      "id": "tree",
+      "name": "나무",
+      "color": "#0e5a1a",
+      "footprint": [
+        1,
+        1
+      ]
+    },
+    {
+      "id": "building_3x3",
+      "name": "건물(3×3)",
+      "color": "#aa3434",
+      "footprint": [
+        3,
+        3
+      ]
+    },
+    {
+      "id": "mountain_5x5",
+      "name": "산(5×5)",
+      "color": "#444a4e",
+      "footprint": [
+        5,
+        5
+      ]
+    }
+  ],
+  "placements": [
+    {
+      "module": "mountain_5x5",
+      "x": 0,
+      "y": 0,
+      "footprint": [
+        5,
+        5
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "mountain_5x5",
+      "x": 5,
+      "y": 0,
+      "footprint": [
+        5,
+        5
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "mountain_5x5",
+      "x": 20,
+      "y": 0,
+      "footprint": [
+        5,
+        5
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "mountain_5x5",
+      "x": 0,
+      "y": 5,
+      "footprint": [
+        5,
+        5
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "tree",
+      "x": 6,
+      "y": 6,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 7,
+      "y": 6,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "tree",
+      "x": 6,
+      "y": 7,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 7,
+      "y": 7,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 8,
+      "y": 7,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 20,
+      "y": 7,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 21,
+      "y": 7,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 22,
+      "y": 7,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 23,
+      "y": 7,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 24,
+      "y": 7,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "tree",
+      "x": 7,
+      "y": 8,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 8,
+      "y": 8,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 9,
+      "y": 8,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "tree",
+      "x": 10,
+      "y": 8,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 19,
+      "y": 8,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_dirt",
+      "x": 20,
+      "y": 8,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_dirt",
+      "x": 21,
+      "y": 8,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_dirt",
+      "x": 22,
+      "y": 8,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 23,
+      "y": 8,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 24,
+      "y": 8,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "tree",
+      "x": 7,
+      "y": 9,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 8,
+      "y": 9,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 9,
+      "y": 9,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "tree",
+      "x": 10,
+      "y": 9,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 19,
+      "y": 9,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_dirt",
+      "x": 20,
+      "y": 9,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_dirt",
+      "x": 21,
+      "y": 9,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_dirt",
+      "x": 22,
+      "y": 9,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 23,
+      "y": 9,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 24,
+      "y": 9,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "tree",
+      "x": 5,
+      "y": 10,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 6,
+      "y": 10,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 7,
+      "y": 10,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 8,
+      "y": 10,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 9,
+      "y": 10,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "tree",
+      "x": 10,
+      "y": 10,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 19,
+      "y": 10,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 20,
+      "y": 10,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 21,
+      "y": 10,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 22,
+      "y": 10,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "tree",
+      "x": 4,
+      "y": 11,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 5,
+      "y": 11,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 6,
+      "y": 11,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 7,
+      "y": 11,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 8,
+      "y": 11,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 9,
+      "y": 11,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "tree",
+      "x": 10,
+      "y": 11,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 19,
+      "y": 11,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 20,
+      "y": 11,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "tree",
+      "x": 4,
+      "y": 12,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 5,
+      "y": 12,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_dirt",
+      "x": 6,
+      "y": 12,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 7,
+      "y": 12,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 8,
+      "y": 12,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 9,
+      "y": 12,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "tree",
+      "x": 10,
+      "y": 12,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 19,
+      "y": 12,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 20,
+      "y": 12,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "tree",
+      "x": 4,
+      "y": 13,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 5,
+      "y": 13,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_dirt",
+      "x": 6,
+      "y": 13,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 19,
+      "y": 13,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 20,
+      "y": 13,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "tree",
+      "x": 4,
+      "y": 14,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 5,
+      "y": 14,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_dirt",
+      "x": 6,
+      "y": 14,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 19,
+      "y": 14,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 20,
+      "y": 14,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 21,
+      "y": 14,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 3,
+      "y": 15,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 4,
+      "y": 15,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 5,
+      "y": 15,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_dirt",
+      "x": 6,
+      "y": 15,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "building_3x3",
+      "x": 18,
+      "y": 15,
+      "footprint": [
+        3,
+        3
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 21,
+      "y": 15,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 22,
+      "y": 15,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 3,
+      "y": 16,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 4,
+      "y": 16,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_dirt",
+      "x": 5,
+      "y": 16,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_dirt",
+      "x": 6,
+      "y": 16,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 21,
+      "y": 16,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 22,
+      "y": 16,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 23,
+      "y": 16,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 3,
+      "y": 17,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 4,
+      "y": 17,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_dirt",
+      "x": 5,
+      "y": 17,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_dirt",
+      "x": 6,
+      "y": 17,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 22,
+      "y": 17,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 23,
+      "y": 17,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 26,
+      "y": 17,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 27,
+      "y": 17,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 28,
+      "y": 17,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 3,
+      "y": 18,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 4,
+      "y": 18,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 5,
+      "y": 18,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 6,
+      "y": 18,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 22,
+      "y": 18,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 23,
+      "y": 18,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 24,
+      "y": 18,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 25,
+      "y": 18,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 26,
+      "y": 18,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 27,
+      "y": 18,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 28,
+      "y": 18,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "tree",
+      "x": 5,
+      "y": 19,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 6,
+      "y": 19,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 7,
+      "y": 19,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_dirt",
+      "x": 12,
+      "y": 19,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_dirt",
+      "x": 13,
+      "y": 19,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_dirt",
+      "x": 14,
+      "y": 19,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 21,
+      "y": 19,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 22,
+      "y": 19,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 23,
+      "y": 19,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 24,
+      "y": 19,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 25,
+      "y": 19,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 26,
+      "y": 19,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 27,
+      "y": 19,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 28,
+      "y": 19,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "tree",
+      "x": 5,
+      "y": 20,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "tree",
+      "x": 6,
+      "y": 20,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 7,
+      "y": 20,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 8,
+      "y": 20,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 11,
+      "y": 20,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 12,
+      "y": 20,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 13,
+      "y": 20,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 14,
+      "y": 20,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 15,
+      "y": 20,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 21,
+      "y": 20,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 22,
+      "y": 20,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 23,
+      "y": 20,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 26,
+      "y": 20,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 27,
+      "y": 20,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 28,
+      "y": 20,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "tree",
+      "x": 6,
+      "y": 21,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 7,
+      "y": 21,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 8,
+      "y": 21,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 9,
+      "y": 21,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 10,
+      "y": 21,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 11,
+      "y": 21,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_dirt",
+      "x": 12,
+      "y": 21,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_dirt",
+      "x": 13,
+      "y": 21,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_dirt",
+      "x": 14,
+      "y": 21,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 15,
+      "y": 21,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_dirt",
+      "x": 19,
+      "y": 21,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_dirt",
+      "x": 20,
+      "y": 21,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 21,
+      "y": 21,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 22,
+      "y": 21,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "tree",
+      "x": 6,
+      "y": 22,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "tree",
+      "x": 7,
+      "y": 22,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 8,
+      "y": 22,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 9,
+      "y": 22,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 10,
+      "y": 22,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 11,
+      "y": 22,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_dirt",
+      "x": 12,
+      "y": 22,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_dirt",
+      "x": 13,
+      "y": 22,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_dirt",
+      "x": 14,
+      "y": 22,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 15,
+      "y": 22,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 16,
+      "y": 22,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 17,
+      "y": 22,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 18,
+      "y": 22,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 19,
+      "y": 22,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 20,
+      "y": 22,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 21,
+      "y": 22,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 22,
+      "y": 22,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "building_3x3",
+      "x": 5,
+      "y": 23,
+      "footprint": [
+        3,
+        3
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 8,
+      "y": 23,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 9,
+      "y": 23,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 10,
+      "y": 23,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 11,
+      "y": 23,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_dirt",
+      "x": 12,
+      "y": 23,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_dirt",
+      "x": 13,
+      "y": 23,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_dirt",
+      "x": 14,
+      "y": 23,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 15,
+      "y": 23,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 16,
+      "y": 23,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 17,
+      "y": 23,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 18,
+      "y": 23,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 19,
+      "y": 23,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 20,
+      "y": 23,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 21,
+      "y": 23,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 22,
+      "y": 23,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 11,
+      "y": 24,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_dirt",
+      "x": 12,
+      "y": 24,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_dirt",
+      "x": 13,
+      "y": 24,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_dirt",
+      "x": 14,
+      "y": 24,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 15,
+      "y": 24,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 19,
+      "y": 24,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 20,
+      "y": 24,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "tree",
+      "x": 21,
+      "y": 24,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 11,
+      "y": 25,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 12,
+      "y": 25,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 13,
+      "y": 25,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 14,
+      "y": 25,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 15,
+      "y": 25,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 19,
+      "y": 25,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 20,
+      "y": 25,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "tree",
+      "x": 21,
+      "y": 25,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "mountain_5x5",
+      "x": 25,
+      "y": 25,
+      "footprint": [
+        5,
+        5
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 19,
+      "y": 26,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 20,
+      "y": 26,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "tree",
+      "x": 21,
+      "y": 26,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 18,
+      "y": 27,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 19,
+      "y": 27,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 20,
+      "y": 27,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 21,
+      "y": 27,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 18,
+      "y": 28,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 19,
+      "y": 28,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 20,
+      "y": 28,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 21,
+      "y": 28,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 18,
+      "y": 29,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 19,
+      "y": 29,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 20,
+      "y": 29,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_stone",
+      "x": 21,
+      "y": 29,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_dirt",
+      "x": 19,
+      "y": 30,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    },
+    {
+      "module": "block_1m_dirt",
+      "x": 20,
+      "y": 30,
+      "footprint": [
+        1,
+        1
+      ],
+      "yaw": 0
+    }
+  ]
+}

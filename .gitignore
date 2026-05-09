@@ -1,0 +1,27 @@
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Blender
+*.blend1
+*.blend2
+*.blend@
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Local renders / temp outputs (commit only docs/ images intentionally)
+/*.png
+/*.blend
+
+# Local config
+.env
