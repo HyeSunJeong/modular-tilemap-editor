@@ -23,15 +23,32 @@ from pathlib import Path
 # ────────────────────────────────────────────────────────────
 JSON_PATH = r"C:\path\to\your\tilemap.json"
 
-# Module styling — keep keys in sync with index.html MODULES
+# Module styling — keep keys in sync with index.html MODULES (v2 naming)
+#   Naming: [CATEGORY]_[Type]_[Material]
+#   Categories: TRN(Terrain), ELV(Elevation), ENV(Environment), BLD(Building), ZON(Zone — v0.4)
 MODULE_STYLE = {
-    "block_1m_grass": {"height": 1.0, "shape_factor": 1.0, "color": (0.29, 0.60, 0.29)},
-    "block_1m_dirt":  {"height": 0.3, "shape_factor": 1.0, "color": (0.48, 0.35, 0.23)},
-    "block_1m_stone": {"height": 1.0, "shape_factor": 1.0, "color": (0.60, 0.60, 0.60)},
-    "block_5m_stone": {"height": 2.5, "shape_factor": 1.0, "color": (0.35, 0.35, 0.35)},
-    "tree":           {"height": 2.5, "shape_factor": 0.4, "color": (0.05, 0.35, 0.10)},
-    "building_3x3":   {"height": 5.0, "shape_factor": 1.0, "color": (0.67, 0.20, 0.20)},
-    "mountain_5x5":   {"height": 6.0, "shape_factor": 1.0, "color": (0.27, 0.29, 0.31)},
+    # Base terrain
+    "TRN_Base_Grass":     {"height": 1.0, "shape_factor": 1.0, "color": (0.29, 0.60, 0.29)},
+    "TRN_Base_Dirt":      {"height": 0.3, "shape_factor": 1.0, "color": (0.48, 0.35, 0.23)},
+    "TRN_Base_Stone":     {"height": 1.0, "shape_factor": 1.0, "color": (0.60, 0.60, 0.60)},
+    # Elevation (multi-cell platforms / slopes — height > base)
+    "ELV_Platform_Stone": {"height": 2.5, "shape_factor": 1.0, "color": (0.35, 0.35, 0.35)},
+    # Environment
+    "ENV_Tree_Pine":      {"height": 2.5, "shape_factor": 0.4, "color": (0.05, 0.35, 0.10)},
+    "ENV_Mount_Peak":     {"height": 6.0, "shape_factor": 1.0, "color": (0.27, 0.29, 0.31)},
+    # Buildings
+    "BLD_House_Generic":  {"height": 5.0, "shape_factor": 1.0, "color": (0.67, 0.20, 0.20)},
+}
+
+# v1 → v2 ID migration (auto-applied at load time so old JSONs still work)
+LEGACY_ID_MAP = {
+    "block_1m_grass": "TRN_Base_Grass",
+    "block_1m_dirt":  "TRN_Base_Dirt",
+    "block_1m_stone": "TRN_Base_Stone",
+    "block_5m_stone": "ELV_Platform_Stone",
+    "tree":           "ENV_Tree_Pine",
+    "building_3x3":   "BLD_House_Generic",
+    "mountain_5x5":   "ENV_Mount_Peak",
 }
 
 
@@ -93,24 +110,29 @@ def assemble(json_path):
     bpy.context.scene.collection.children.link(mockup_col)
 
     mat_cache = {}
-    counts, skipped = {}, []
+    counts, skipped, migrated = {}, [], 0
 
     for p in placements:
         module_id = p["module"]
+        # Auto-migrate legacy v1 IDs
+        if module_id in LEGACY_ID_MAP:
+            module_id = LEGACY_ID_MAP[module_id]
+            migrated += 1
         if module_id not in MODULE_STYLE:
             skipped.append(module_id)
             continue
         style = MODULE_STYLE[module_id]
         x, y = p["x"], p["y"]
+        z_layer = p.get("z", 0)  # v2: optional Z stack index (each unit = 1 tile height)
         fw, fh = p["footprint"]
         sx = fw * tile_m * style["shape_factor"]
         sy = fh * tile_m * style["shape_factor"]
         sz = style["height"]
         cx = (x + fw / 2.0) * tile_m
         cy = (grid_h - (y + fh / 2.0)) * tile_m  # flip Y
-        cz = sz / 2.0
-        mesh = make_cube_mesh(f"M_{module_id}_{x}_{y}", sx, sy, sz)
-        obj = bpy.data.objects.new(f"O_{module_id}_{x}_{y}", mesh)
+        cz = z_layer * tile_m + sz / 2.0  # stack on top of z_layer*tile_m baseline
+        mesh = make_cube_mesh(f"M_{module_id}_{x}_{y}_z{z_layer}", sx, sy, sz)
+        obj = bpy.data.objects.new(f"O_{module_id}_{x}_{y}_z{z_layer}", mesh)
         obj.location = (cx, cy, cz)
         obj.data.materials.append(get_or_create_material(module_id, mat_cache))
         mockup_col.objects.link(obj)
@@ -171,8 +193,11 @@ def assemble(json_path):
     except Exception:
         pass
 
-    print(f"[Tilemap Mockup] Placed {sum(counts.values())} modules")
+    ver = data.get("version", 1)
+    print(f"[Tilemap Mockup] Placed {sum(counts.values())} modules (schema v{ver})")
     print(f"  By type: {counts}")
+    if migrated:
+        print(f"  Auto-migrated {migrated} legacy v1 IDs → v2")
     if skipped:
         print(f"  Skipped (unknown modules): {set(skipped)}")
     return counts, skipped

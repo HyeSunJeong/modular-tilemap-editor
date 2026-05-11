@@ -2,23 +2,26 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>Tilemap Editor MVP — 32×32</title>
+<title>Tilemap Editor — 128×128 (v0.2)</title>
 <style>
   * { box-sizing: border-box; }
   body {
     margin: 0; font-family: 'Segoe UI', sans-serif;
     background: #1a1a1a; color: #eee;
-    display: flex; height: 100vh; overflow: hidden;
+    display: flex; min-height: 100vh;
+    overflow: auto; min-width: 1320px;
   }
   #sidebar {
-    width: 260px; padding: 14px;
+    width: 280px; padding: 14px;
     border-right: 1px solid #333;
     overflow-y: auto;
     flex-shrink: 0;
+    height: 100vh;
+    position: sticky; top: 0;
   }
   #main {
     flex: 1; display: flex; flex-direction: column;
-    align-items: center; justify-content: center; padding: 16px;
+    align-items: center; justify-content: flex-start; padding: 16px;
   }
   h2 {
     margin: 14px 0 6px; font-size: 12px; color: #888;
@@ -26,9 +29,14 @@
     font-weight: 600;
   }
   h2:first-child { margin-top: 0; }
+  .layer-label {
+    font-size: 10px; color: #666; margin: 8px 0 2px;
+    text-transform: uppercase; letter-spacing: 0.04em;
+    padding-left: 2px;
+  }
   .palette-item {
     display: flex; align-items: center; gap: 10px;
-    padding: 7px 9px; margin: 3px 0;
+    padding: 6px 8px; margin: 2px 0;
     border: 1px solid #2c2c2c; border-radius: 4px;
     cursor: pointer; user-select: none;
     transition: background 0.1s, border-color 0.1s;
@@ -40,15 +48,16 @@
     border: 1px solid #555; border-radius: 2px;
     flex-shrink: 0;
   }
-  .palette-name { flex: 1; font-size: 13px; }
+  .palette-name { flex: 1; font-size: 12px; line-height: 1.2; }
+  .palette-id { font-size: 10px; color: #777; font-family: monospace; }
   .palette-fp { font-size: 11px; color: #888; }
   .tools, .actions { display: flex; flex-direction: column; gap: 4px; }
   .tools { flex-direction: row; }
   .tool-btn, .action-btn {
-    padding: 8px 10px; background: #252525;
+    padding: 7px 10px; background: #252525;
     border: 1px solid #3a3a3a; color: #eee;
     cursor: pointer; border-radius: 4px;
-    font-size: 13px; font-family: inherit;
+    font-size: 12px; font-family: inherit;
     transition: background 0.1s, border-color 0.1s;
   }
   .tool-btn { flex: 1; }
@@ -56,8 +65,8 @@
   .tool-btn:hover, .action-btn:hover { background: #303030; }
   .action-btn:active { background: #1a3a5a; }
   .info {
-    font-size: 12px; color: #888; line-height: 1.7;
-    padding: 8px 4px;
+    font-size: 11px; color: #888; line-height: 1.7;
+    padding: 6px 4px;
   }
   .info kbd {
     display: inline-block;
@@ -66,16 +75,28 @@
     font-family: monospace; font-size: 11px;
     color: #ccc;
   }
+  /* PNG underlay panel */
+  .row { display: flex; align-items: center; gap: 8px; margin: 4px 0; font-size: 12px; }
+  .row input[type="range"] { flex: 1; }
+  .row input[type="checkbox"] { accent-color: #5a9bdc; }
+  #opacity-val { font-family: monospace; font-size: 11px; color: #aaa; min-width: 36px; text-align: right; }
+  /* Layered canvas */
   #canvas-wrap {
     position: relative;
+    width: 1024px; height: 1024px;
     box-shadow: 0 0 0 1px #444, 0 8px 24px rgba(0,0,0,0.4);
-  }
-  #canvas {
-    display: block;
     background: #0a0a0a;
-    cursor: crosshair;
+    flex-shrink: 0;
+  }
+  #canvas-wrap canvas {
+    position: absolute; left: 0; top: 0;
+    width: 1024px; height: 1024px;
     image-rendering: pixelated;
   }
+  #canvas-underlay { z-index: 1; pointer-events: none; }
+  #canvas-grid     { z-index: 2; pointer-events: none; }
+  #canvas          { z-index: 3; cursor: crosshair; }
+  #canvas-cursor   { z-index: 4; pointer-events: none; }
   #status {
     color: #888; font-size: 12px; margin-top: 12px;
     height: 16px; min-width: 320px; text-align: center;
@@ -92,7 +113,7 @@
   #drop-overlay.visible { display: flex; }
   hr {
     border: none; border-top: 1px solid #2a2a2a;
-    margin: 14px 0;
+    margin: 12px 0;
   }
 </style>
 </head>
@@ -109,11 +130,35 @@
     <button class="tool-btn" data-tool="eraser">지우개</button>
   </div>
 
+  <h2>브러시 크기 (펜/지우개)</h2>
+  <div class="row">
+    <input type="range" id="brush-size" min="1" max="10" value="1" style="flex:1">
+    <span id="brush-val" style="font-family:monospace;font-size:11px;color:#aaa;min-width:36px;text-align:right">1×1</span>
+  </div>
+  <div class="info" style="margin-top:-4px">
+    <kbd>[</kbd> 작게 / <kbd>]</kbd> 크게 (멀티셀 모듈은 자동 무시)
+  </div>
+
   <h2>편집</h2>
   <div class="actions">
     <button class="action-btn" id="btn-undo">되돌리기 (Ctrl+Z)</button>
     <button class="action-btn" id="btn-redo">다시 실행 (Ctrl+Y)</button>
     <button class="action-btn" id="btn-clear">전체 삭제</button>
+  </div>
+
+  <h2>밑그림 (PNG)</h2>
+  <div class="actions">
+    <button class="action-btn" id="btn-load-img">이미지 불러오기</button>
+    <div class="row">
+      <input type="checkbox" id="img-toggle" checked>
+      <label for="img-toggle" style="flex:1;cursor:pointer">표시</label>
+    </div>
+    <div class="row">
+      <span style="font-size:11px;color:#aaa">투명도</span>
+      <input type="range" id="img-opacity" min="0" max="100" value="50">
+      <span id="opacity-val">50%</span>
+    </div>
+    <button class="action-btn" id="btn-clear-img">이미지 제거</button>
   </div>
 
   <h2>파일</h2>
@@ -124,56 +169,111 @@
 
   <h2>정보</h2>
   <div class="info">
-    그리드: 32 × 32<br>
-    타일: 1m × 1m<br>
+    그리드: 128 × 128<br>
+    타일: 1m × 1m (총 128m × 128m)<br>
+    굵은선: 64칸마다 (4등분)<br>
     좌표: (x=열, y=행), (0,0)=좌상단<br>
+    <hr>
+    <b style="color:#bbb">레이어 스택</b><br>
+    아래→위: <b>Base</b> → <b>Elevation</b> → <b>Environment</b><br>
+    같은 셀에서 레이어가 다른 모듈은 공존<br>
+    <b style="color:#bbb">지우개 동작</b><br>
+    팔레트에서 <b>선택한 모듈의 레이어/영역만</b> 지움<br>
+    (예: ELV 선택 시 base는 절대 안 지워짐)<br>
     <hr>
     <kbd>좌클릭</kbd> 칠하기/드래그<br>
     <kbd>우클릭</kbd> 지우개<br>
     <kbd>Ctrl+Z</kbd>/<kbd>Y</kbd> 되돌리기<br>
-    JSON 파일을 창에 드래그해도 로드됨
+    파일을 창에 드래그:<br>
+    &nbsp;&nbsp;.json → 맵 로드<br>
+    &nbsp;&nbsp;.png/.jpg → 밑그림 로드
   </div>
 </div>
 
 <div id="main">
   <div id="canvas-wrap">
-    <canvas id="canvas" width="640" height="640"></canvas>
+    <canvas id="canvas-underlay" width="1024" height="1024"></canvas>
+    <canvas id="canvas-grid"     width="1024" height="1024"></canvas>
+    <canvas id="canvas"          width="1024" height="1024"></canvas>
+    <canvas id="canvas-cursor"   width="1024" height="1024"></canvas>
   </div>
   <div id="status">준비 완료</div>
 </div>
 
-<div id="drop-overlay">JSON 파일을 여기에 드롭</div>
+<div id="drop-overlay">파일을 여기에 드롭 (.json 또는 .png)</div>
 <input type="file" id="file-input" accept=".json" style="display:none;">
+<input type="file" id="img-input"  accept="image/png,image/jpeg,image/webp,image/*" style="display:none;">
 
 <script>
-// ───── Config ─────────────────────────────────────────
-const GRID_W = 32, GRID_H = 32;
-const CELL_PX = 20;
+// ═══════════════════════════════════════════════════════
+// Config
+// ═══════════════════════════════════════════════════════
+const GRID_W = 128, GRID_H = 128;
+const CELL_PX = 8;
 const TILE_SIZE_M = 1.0;
+const QUADRANT = 64;          // thick grid line every N cells (4등분)
+const SCHEMA_VERSION = 2;
 
+// ── Modules ────────────────────────────────────────────
+// Naming: [CATEGORY]_[Type]_[Material]
+// Categories: TRN(Terrain), ELV(Elevation), ENV(Environment), BLD(Building), ZON(Zone — v0.4)
+// Footprint is a data property — NOT in the name (so 3×3 → 5×5 castle keeps same ID)
 const MODULES = [
-  { id: "block_1m_grass", name: "1M 잔디",   color: "#4a9a4a", footprint: [1,1] },
-  { id: "block_1m_dirt",  name: "1M 흙",     color: "#7a5a3a", footprint: [1,1] },
-  { id: "block_1m_stone", name: "1M 돌",     color: "#9a9a9a", footprint: [1,1] },
-  { id: "block_5m_stone", name: "5M 돌",     color: "#5a5a5a", footprint: [5,5] },
-  { id: "tree",           name: "나무",      color: "#0e5a1a", footprint: [1,1] },
-  { id: "building_3x3",   name: "건물(3×3)", color: "#aa3434", footprint: [3,3] },
-  { id: "mountain_5x5",   name: "산(5×5)",   color: "#444a4e", footprint: [5,5] },
+  // Base terrain — flat 1×1 ground at z=0
+  { id: "TRN_Base_Grass",    name: "잔디",            color: "#4a9a4a", footprint: [1,1], layer: "base" },
+  { id: "TRN_Base_Dirt",     name: "흙",              color: "#7a5a3a", footprint: [1,1], layer: "base" },
+  { id: "TRN_Base_Stone",    name: "돌바닥",          color: "#9a9a9a", footprint: [1,1], layer: "base" },
+  // Elevation — multi-cell platforms / slopes (height ≠ 0)
+  { id: "ELV_Platform_Stone", name: "돌 플랫폼 (5×5)", color: "#5a5a5a", footprint: [5,5], layer: "elevation" },
+  // Environment — props on top of base
+  { id: "ENV_Tree_Pine",     name: "나무",            color: "#0e5a1a", footprint: [1,1], layer: "environment" },
+  { id: "ENV_Mount_Peak",    name: "산 (5×5)",        color: "#444a4e", footprint: [5,5], layer: "environment" },
+  // Buildings — man-made
+  { id: "BLD_House_Generic", name: "건물 (3×3)",      color: "#aa3434", footprint: [3,3], layer: "environment" },
 ];
 
-// ───── State ──────────────────────────────────────────
-let state = {
-  grid: makeEmptyGrid(),       // grid[y][x] = placement_id or null
-  placements: {},              // id -> { module, x, y, footprint, yaw }
+// v1 → v2 ID migration
+const LEGACY_ID_MAP = {
+  "block_1m_grass": "TRN_Base_Grass",
+  "block_1m_dirt":  "TRN_Base_Dirt",
+  "block_1m_stone": "TRN_Base_Stone",
+  "block_5m_stone": "ELV_Platform_Stone",
+  "tree":           "ENV_Tree_Pine",
+  "building_3x3":   "BLD_House_Generic",
+  "mountain_5x5":   "ENV_Mount_Peak",
 };
-let selectedModule = "block_1m_grass";
+
+// ═══════════════════════════════════════════════════════
+// State
+// ═══════════════════════════════════════════════════════
+// Layer stacking: bottom → top render order
+const LAYERS = ["base", "elevation", "environment"];
+
+function makeEmptyLayers() {
+  const o = {};
+  LAYERS.forEach(L => o[L] = makeEmptyGrid());
+  return o;
+}
+
+let state = {
+  layers: makeEmptyLayers(),   // layers[name][y][x] = placement_id or null
+  placements: {},              // pid -> { module, x, y, z, layer, footprint, yaw }
+};
+let selectedModule = "TRN_Base_Grass";
 let currentTool = "pen";
+let brushSize = 1;             // N×N for pen/eraser when module is 1×1
 let isDrawing = false;
 let drawingButton = 0;
 let lastDrawCell = null;
 let undoStack = [];
 let redoStack = [];
 let placementCounter = 0;
+let hoverCell = null;          // {x,y} or null — for cursor preview
+
+// Underlay (PNG reference)
+let underlayImage = null;
+let underlayVisible = true;
+let underlayOpacity = 0.5;
 
 function makeEmptyGrid() {
   const g = [];
@@ -182,17 +282,48 @@ function makeEmptyGrid() {
 }
 function newPid() { return "p" + (++placementCounter); }
 function getModule(id) { return MODULES.find(m => m.id === id); }
+function getLayerOf(moduleId) {
+  const m = getModule(moduleId);
+  return m ? m.layer : null;
+}
+// Topmost occupied layer at (x,y), or null
+function topLayerAt(x, y) {
+  if (!inBounds(x, y)) return null;
+  for (let i = LAYERS.length - 1; i >= 0; i--) {
+    const L = LAYERS[i];
+    if (state.layers[L][y][x]) return L;
+  }
+  return null;
+}
+// Stack of module display names at (x,y), bottom→top
+function stackAt(x, y) {
+  if (!inBounds(x, y)) return [];
+  const names = [];
+  LAYERS.forEach(L => {
+    const pid = state.layers[L][y][x];
+    if (pid) {
+      const m = getModule(state.placements[pid].module);
+      if (m) names.push(m.name);
+    }
+  });
+  return names;
+}
 
-// ───── Undo / Redo ────────────────────────────────────
+// ═══════════════════════════════════════════════════════
+// Undo / Redo
+// ═══════════════════════════════════════════════════════
 function snapshot() {
+  const layers = {};
+  LAYERS.forEach(L => layers[L] = state.layers[L].map(r => r.slice()));
   return {
-    grid: state.grid.map(r => r.slice()),
+    layers,
     placements: JSON.parse(JSON.stringify(state.placements)),
     counter: placementCounter,
   };
 }
 function restore(snap) {
-  state.grid = snap.grid.map(r => r.slice());
+  state.layers = {};
+  LAYERS.forEach(L => state.layers[L] = snap.layers[L].map(r => r.slice()));
   state.placements = JSON.parse(JSON.stringify(snap.placements));
   placementCounter = snap.counter;
 }
@@ -205,73 +336,99 @@ function undo() {
   if (!undoStack.length) return;
   redoStack.push(snapshot());
   restore(undoStack.pop());
-  draw();
+  drawPlacements();
   setStatus("되돌림");
 }
 function redoFn() {
   if (!redoStack.length) return;
   undoStack.push(snapshot());
   restore(redoStack.pop());
-  draw();
+  drawPlacements();
   setStatus("다시 실행");
 }
 
-// ───── Operations ─────────────────────────────────────
+// ═══════════════════════════════════════════════════════
+// Grid operations
+// ═══════════════════════════════════════════════════════
 function inBounds(x, y) {
   return x >= 0 && x < GRID_W && y >= 0 && y < GRID_H;
 }
 
-function clearPlacement(pid) {
+// Remove just ONE cell from a (possibly multi-cell legacy) placement.
+// If no cells remain, the placement is deleted entirely.
+function clearCell(pid, x, y) {
   const p = state.placements[pid];
   if (!p) return;
+  const grid = state.layers[p.layer];
+  if (!grid || !grid[y]) return;
+  if (grid[y][x] === pid) grid[y][x] = null;
+  // If placement is 1×1, definitely empty now → delete
+  if (p.footprint[0] === 1 && p.footprint[1] === 1) {
+    delete state.placements[pid];
+    return;
+  }
+  // Multi-cell legacy: check if any cells still claim this pid
   const [w, h] = p.footprint;
   for (let yy = p.y; yy < p.y + h; yy++)
     for (let xx = p.x; xx < p.x + w; xx++)
-      if (state.grid[yy][xx] === pid) state.grid[yy][xx] = null;
+      if (grid[yy] && grid[yy][xx] === pid) return;  // still has cells
   delete state.placements[pid];
 }
 
-function clearArea(x, y, w, h) {
-  const toRemove = new Set();
-  for (let yy = y; yy < y + h; yy++)
-    for (let xx = x; xx < x + w; xx++)
-      if (inBounds(xx, yy) && state.grid[yy][xx])
-        toRemove.add(state.grid[yy][xx]);
-  toRemove.forEach(clearPlacement);
-}
-
-function placeModule(moduleId, x, y) {
-  const m = getModule(moduleId);
-  if (!m) return false;
-  const [w, h] = m.footprint;
-  if (x < 0 || y < 0 || x + w > GRID_W || y + h > GRID_H) {
-    setStatus(`범위 초과 (${m.name} 는 ${w}×${h}, 위치 ${x},${y})`);
-    return false;
-  }
-  // Skip if same module already exactly here
-  const existing = state.grid[y][x];
+// Place a single 1×1 cell. Returns true if a new cell was created.
+// Same module already at (x,y,z) in this layer → no-op.
+// Different module → that one cell is taken over (existing placement shrinks).
+function placeCell(moduleId, x, y, z, layer) {
+  if (!inBounds(x, y)) return false;
+  const grid = state.layers[layer];
+  if (!grid) return false;
+  const existing = grid[y][x];
   if (existing) {
     const ep = state.placements[existing];
-    if (ep.module === moduleId && ep.x === x && ep.y === y) return false;
+    if (ep.module === moduleId && (ep.z || 0) === z) return false;  // idempotent
+    clearCell(existing, x, y);
   }
-  clearArea(x, y, w, h);
   const pid = newPid();
   state.placements[pid] = {
-    module: moduleId, x, y,
-    footprint: m.footprint.slice(), yaw: 0,
+    module: moduleId, x, y, z,
+    layer,
+    footprint: [1, 1],
+    yaw: 0,
   };
-  for (let yy = y; yy < y + h; yy++)
-    for (let xx = x; xx < x + w; xx++)
-      state.grid[yy][xx] = pid;
+  grid[y][x] = pid;
   return true;
 }
 
-function eraseAt(x, y) {
-  if (!inBounds(x, y)) return;
-  const pid = state.grid[y][x];
-  if (pid) clearPlacement(pid);
+// Stamp the module's footprint as individual 1×1 cells.
+// Overlapping stamps merge cleanly: same-module cells are skipped,
+// different-module cells are taken over per-cell (not wholesale).
+function placeModule(moduleId, x, y, z = 0) {
+  const m = getModule(moduleId);
+  if (!m) return false;
+  const [w, h] = m.footprint;
+  const L = m.layer;
+  if (!state.layers[L]) { setStatus(`알 수 없는 레이어: ${L}`); return false; }
+  let placed = 0;
+  for (let dy = 0; dy < h; dy++) {
+    for (let dx = 0; dx < w; dx++) {
+      if (placeCell(moduleId, x + dx, y + dy, z, L)) placed++;
+    }
+  }
+  return placed > 0;
 }
 
+// Eraser is scoped to a specific layer (passed in) — never touches other layers.
+// The layer is determined by the currently selected palette module
+// → "what I'm holding paints AND erases the same layer".
+function eraseAt(x, y, layer) {
+  if (!inBounds(x, y) || !layer) return;
+  const grid = state.layers[layer];
+  if (!grid) return;
+  const pid = grid[y][x];
+  if (pid) clearCell(pid, x, y);
+}
+
+// Bucket fills within the active module's layer only
 function bucketFill(x, y, moduleId) {
   const m = getModule(moduleId);
   if (!m) return false;
@@ -280,7 +437,9 @@ function bucketFill(x, y, moduleId) {
     return false;
   }
   if (!inBounds(x, y)) return false;
-  const startPid = state.grid[y][x];
+  const L = m.layer;
+  const grid = state.layers[L];
+  const startPid = grid[y][x];
   const startModule = startPid ? state.placements[startPid].module : null;
   if (startModule === moduleId) return false;
 
@@ -292,7 +451,7 @@ function bucketFill(x, y, moduleId) {
     const key = cx + "," + cy;
     if (visited.has(key)) continue;
     if (!inBounds(cx, cy)) continue;
-    const pid = state.grid[cy][cx];
+    const pid = grid[cy][cx];
     const mod = pid ? state.placements[pid].module : null;
     if (mod !== startModule) continue;
     visited.add(key);
@@ -300,74 +459,188 @@ function bucketFill(x, y, moduleId) {
     count++;
     queue.push([cx+1,cy],[cx-1,cy],[cx,cy+1],[cx,cy-1]);
   }
-  setStatus(`채우기: ${count}칸`);
+  setStatus(`채우기: ${count}칸 (${L} 레이어)`);
   return true;
 }
 
-// ───── Drawing ────────────────────────────────────────
-const canvas = document.getElementById("canvas");
-const ctx = canvas.getContext("2d");
+// ═══════════════════════════════════════════════════════
+// Layered canvases — underlay / grid / placements
+// ═══════════════════════════════════════════════════════
+const underlayCanvas = document.getElementById("canvas-underlay");
+const gridCanvas     = document.getElementById("canvas-grid");
+const canvas         = document.getElementById("canvas");
+const cursorCanvas   = document.getElementById("canvas-cursor");
+const underlayCtx    = underlayCanvas.getContext("2d");
+const gridCtx        = gridCanvas.getContext("2d");
+const ctx            = canvas.getContext("2d");
+const cursorCtx      = cursorCanvas.getContext("2d");
 
-function draw() {
-  // Background
-  ctx.fillStyle = "#0a0a0a";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+// ── Grid (drawn once) ──────────────────────────────────
+function drawGrid() {
+  gridCtx.clearRect(0, 0, gridCanvas.width, gridCanvas.height);
 
-  // Cells
-  for (let y = 0; y < GRID_H; y++) {
-    for (let x = 0; x < GRID_W; x++) {
-      const pid = state.grid[y][x];
-      if (pid) {
+  // Thin cell lines
+  gridCtx.strokeStyle = "rgba(255,255,255,0.06)";
+  gridCtx.lineWidth = 1;
+  gridCtx.beginPath();
+  for (let i = 0; i <= GRID_W; i++) {
+    const px = i * CELL_PX + 0.5;
+    gridCtx.moveTo(px, 0);
+    gridCtx.lineTo(px, GRID_H * CELL_PX);
+  }
+  for (let i = 0; i <= GRID_H; i++) {
+    const py = i * CELL_PX + 0.5;
+    gridCtx.moveTo(0, py);
+    gridCtx.lineTo(GRID_W * CELL_PX, py);
+  }
+  gridCtx.stroke();
+
+  // Thick quadrant lines (every 64 cells → 4등분)
+  gridCtx.strokeStyle = "rgba(120,170,230,0.55)";
+  gridCtx.lineWidth = 2;
+  gridCtx.beginPath();
+  for (let i = 0; i <= GRID_W; i += QUADRANT) {
+    const px = i * CELL_PX + 0.5;
+    gridCtx.moveTo(px, 0);
+    gridCtx.lineTo(px, GRID_H * CELL_PX);
+  }
+  for (let i = 0; i <= GRID_H; i += QUADRANT) {
+    const py = i * CELL_PX + 0.5;
+    gridCtx.moveTo(0, py);
+    gridCtx.lineTo(GRID_W * CELL_PX, py);
+  }
+  gridCtx.stroke();
+}
+
+// ── Underlay (drawn on image load, opacity, toggle) ────
+function drawUnderlay() {
+  underlayCtx.clearRect(0, 0, underlayCanvas.width, underlayCanvas.height);
+  if (!underlayImage || !underlayVisible) return;
+
+  const cw = underlayCanvas.width, ch = underlayCanvas.height;
+  const iw = underlayImage.naturalWidth, ih = underlayImage.naturalHeight;
+  // Fit preserving aspect ratio
+  const scale = Math.min(cw / iw, ch / ih);
+  const dw = iw * scale, dh = ih * scale;
+  const dx = (cw - dw) / 2, dy = (ch - dh) / 2;
+
+  underlayCtx.imageSmoothingEnabled = false; // nearest-neighbor for pixel-perfect 128px PNG
+  underlayCtx.globalAlpha = underlayOpacity;
+  underlayCtx.drawImage(underlayImage, dx, dy, dw, dh);
+  underlayCtx.globalAlpha = 1;
+}
+
+// ── Placements (drawn on every change) ─────────────────
+// Renders layers bottom→top so higher layers (ELV/ENV) cover lower (TRN) visually,
+// but data for all layers is preserved.
+function drawPlacements() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  LAYERS.forEach(L => {
+    const grid = state.layers[L];
+    for (let y = 0; y < GRID_H; y++) {
+      for (let x = 0; x < GRID_W; x++) {
+        const pid = grid[y][x];
+        if (!pid) continue;
         const p = state.placements[pid];
         const m = getModule(p.module);
+        if (!m) continue;
         ctx.fillStyle = m.color;
         ctx.fillRect(x * CELL_PX, y * CELL_PX, CELL_PX, CELL_PX);
       }
     }
-  }
+  });
+  // Note: per-placement multi-cell border removed — all placements are now per-cell.
+  // The stamp size is shown on the cursor preview instead.
+}
 
-  // Thin grid
-  ctx.strokeStyle = "#1f1f1f";
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  for (let i = 0; i <= GRID_W; i++) {
-    ctx.moveTo(i * CELL_PX + 0.5, 0);
-    ctx.lineTo(i * CELL_PX + 0.5, GRID_H * CELL_PX);
+// ═══════════════════════════════════════════════════════
+// Brush helpers — N×N area centered on (x,y)
+// ═══════════════════════════════════════════════════════
+function brushBounds(x, y, size) {
+  const off = Math.floor(size / 2);
+  return { x0: x - off, y0: y - off, x1: x - off + size - 1, y1: y - off + size - 1 };
+}
+function isMultiCell(moduleId) {
+  const m = getModule(moduleId);
+  return m && (m.footprint[0] !== 1 || m.footprint[1] !== 1);
+}
+function paintBrush(x, y, moduleId, size) {
+  // Multi-cell modules ignore brush — single placement using footprint
+  if (isMultiCell(moduleId) || size === 1) {
+    placeModule(moduleId, x, y);
+    return;
   }
-  for (let i = 0; i <= GRID_H; i++) {
-    ctx.moveTo(0, i * CELL_PX + 0.5);
-    ctx.lineTo(GRID_W * CELL_PX, i * CELL_PX + 0.5);
-  }
-  ctx.stroke();
-
-  // Major grid (every 5)
-  ctx.strokeStyle = "#3a3a3a";
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  for (let i = 0; i <= GRID_W; i += 5) {
-    ctx.moveTo(i * CELL_PX + 0.5, 0);
-    ctx.lineTo(i * CELL_PX + 0.5, GRID_H * CELL_PX);
-  }
-  for (let i = 0; i <= GRID_H; i += 5) {
-    ctx.moveTo(0, i * CELL_PX + 0.5);
-    ctx.lineTo(GRID_W * CELL_PX, i * CELL_PX + 0.5);
-  }
-  ctx.stroke();
-
-  // Placement borders for multi-cell
-  ctx.strokeStyle = "rgba(255,255,255,0.22)";
-  ctx.lineWidth = 1;
-  for (const pid in state.placements) {
-    const p = state.placements[pid];
-    if (p.footprint[0] === 1 && p.footprint[1] === 1) continue;
-    ctx.strokeRect(
-      p.x * CELL_PX + 1.5, p.y * CELL_PX + 1.5,
-      p.footprint[0] * CELL_PX - 3, p.footprint[1] * CELL_PX - 3
-    );
+  const { x0, y0 } = brushBounds(x, y, size);
+  for (let dy = 0; dy < size; dy++)
+    for (let dx = 0; dx < size; dx++) {
+      const xx = x0 + dx, yy = y0 + dy;
+      if (inBounds(xx, yy)) placeModule(moduleId, xx, yy);
+    }
+}
+// Erase using the selected module's footprint+layer (symmetric with paint).
+// - Multi-cell module selected → erases that footprint area in module's layer
+// - 1×1 module selected → erases brush_size × brush_size in module's layer
+// - No module selected → no-op
+function eraseStamp(x, y, moduleId, size) {
+  const m = getModule(moduleId);
+  if (!m) return;
+  const L = m.layer;
+  const [fw, fh] = m.footprint;
+  if (fw > 1 || fh > 1) {
+    // Multi-cell: erase footprint area at cursor (top-left)
+    for (let dy = 0; dy < fh; dy++)
+      for (let dx = 0; dx < fw; dx++)
+        eraseAt(x + dx, y + dy, L);
+  } else {
+    // 1×1: erase N×N centered on cursor (brush size)
+    if (size === 1) { eraseAt(x, y, L); return; }
+    const { x0, y0 } = brushBounds(x, y, size);
+    for (let dy = 0; dy < size; dy++)
+      for (let dx = 0; dx < size; dx++)
+        eraseAt(x0 + dx, y0 + dy, L);
   }
 }
 
-// ───── Mouse ──────────────────────────────────────────
+// ═══════════════════════════════════════════════════════
+// Cursor preview — outline of where the tool will land
+// ═══════════════════════════════════════════════════════
+function drawCursor() {
+  cursorCtx.clearRect(0, 0, cursorCanvas.width, cursorCanvas.height);
+  if (!hoverCell) return;
+  const { x, y } = hoverCell;
+
+  // Compute the stamp area based on tool + selected module
+  let rx, ry, rw, rh, color;
+  const isEraser = (currentTool === "eraser");
+  const isBucket = (currentTool === "bucket");
+
+  if (isBucket) {
+    rx = x * CELL_PX; ry = y * CELL_PX;
+    rw = CELL_PX; rh = CELL_PX;
+    color = "rgba(120,200,255,0.85)";
+  } else {
+    // Pen and Eraser both use the selected module's footprint (multi-cell)
+    // or brush_size × brush_size (1×1). Shape is identical; only color differs.
+    if (isMultiCell(selectedModule)) {
+      const m = getModule(selectedModule);
+      rx = x * CELL_PX; ry = y * CELL_PX;
+      rw = m.footprint[0] * CELL_PX; rh = m.footprint[1] * CELL_PX;
+    } else {
+      const { x0, y0 } = brushBounds(x, y, brushSize);
+      rx = x0 * CELL_PX; ry = y0 * CELL_PX;
+      rw = brushSize * CELL_PX; rh = brushSize * CELL_PX;
+    }
+    color = isEraser ? "rgba(255,90,90,0.85)" : "rgba(255,255,255,0.85)";
+  }
+  cursorCtx.strokeStyle = color;
+  cursorCtx.lineWidth = 1.5;
+  cursorCtx.strokeRect(rx + 0.5, ry + 0.5, rw - 1, rh - 1);
+}
+
+// ═══════════════════════════════════════════════════════
+// Mouse
+// ═══════════════════════════════════════════════════════
 function mouseToCell(e) {
   const r = canvas.getBoundingClientRect();
   return {
@@ -386,18 +659,34 @@ canvas.addEventListener("mousedown", (e) => {
   pushUndo();
   performToolAt(x, y, e.button);
   lastDrawCell = { x, y };
-  draw();
+  drawPlacements();
 });
 
 canvas.addEventListener("mousemove", (e) => {
   const { x, y } = mouseToCell(e);
-  if (inBounds(x, y)) setStatus(`좌표 (${x}, ${y})`);
+  if (inBounds(x, y)) {
+    const stack = stackAt(x, y);
+    const brushMsg = (brushSize > 1 && !isMultiCell(selectedModule)) ? ` · 브러시 ${brushSize}×${brushSize}` : "";
+    const stackMsg = stack.length ? ` · ${stack.join(" + ")}` : "";
+    const m = getModule(selectedModule);
+    const toolMsg = (currentTool === "eraser" && m) ? ` · 지우개→${m.layer}` : "";
+    setStatus(`(${x}, ${y})${toolMsg}${brushMsg}${stackMsg}`);
+    hoverCell = { x, y };
+  } else {
+    hoverCell = null;
+  }
+  drawCursor();
   if (!isDrawing) return;
   if (lastDrawCell && lastDrawCell.x === x && lastDrawCell.y === y) return;
   if (!inBounds(x, y)) return;
   performToolAt(x, y, drawingButton, true);
   lastDrawCell = { x, y };
-  draw();
+  drawPlacements();
+});
+
+canvas.addEventListener("mouseleave", () => {
+  hoverCell = null;
+  drawCursor();
 });
 
 window.addEventListener("mouseup", () => { isDrawing = false; lastDrawCell = null; });
@@ -406,59 +695,103 @@ canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 function performToolAt(x, y, button, isDrag = false) {
   const isRight = button === 2;
   if (isRight || currentTool === "eraser") {
-    eraseAt(x, y);
+    // Eraser scopes to selected module's layer + footprint (or brush for 1×1)
+    eraseStamp(x, y, selectedModule, brushSize);
   } else if (currentTool === "bucket") {
     if (!isDrag) bucketFill(x, y, selectedModule);
   } else {
-    placeModule(selectedModule, x, y);
+    paintBrush(x, y, selectedModule, brushSize);
   }
 }
 
-// ───── Palette ────────────────────────────────────────
+// ═══════════════════════════════════════════════════════
+// Palette (grouped by layer)
+// ═══════════════════════════════════════════════════════
 function buildPalette() {
   const el = document.getElementById("palette");
-  MODULES.forEach(m => {
-    const item = document.createElement("div");
-    item.className = "palette-item" + (m.id === selectedModule ? " selected" : "");
-    item.dataset.id = m.id;
-    item.innerHTML =
-      `<div class="swatch" style="background:${m.color}"></div>` +
-      `<div class="palette-name">${m.name}</div>` +
-      `<div class="palette-fp">${m.footprint[0]}×${m.footprint[1]}</div>`;
-    item.addEventListener("click", () => {
-      selectedModule = m.id;
-      document.querySelectorAll(".palette-item").forEach(e => e.classList.remove("selected"));
-      item.classList.add("selected");
-      setStatus(`선택: ${m.name}`);
+  el.innerHTML = "";
+  const order = ["base", "elevation", "environment"];
+  const labels = {
+    base:        "Base 지형 (TRN)",
+    elevation:   "Elevation (ELV)",
+    environment: "Environment / Building",
+  };
+  order.forEach(layer => {
+    const items = MODULES.filter(m => m.layer === layer);
+    if (!items.length) return;
+    const h = document.createElement("div");
+    h.className = "layer-label";
+    h.textContent = labels[layer];
+    el.appendChild(h);
+    items.forEach(m => {
+      const item = document.createElement("div");
+      item.className = "palette-item" + (m.id === selectedModule ? " selected" : "");
+      item.dataset.id = m.id;
+      item.innerHTML =
+        `<div class="swatch" style="background:${m.color}"></div>` +
+        `<div class="palette-name">${m.name}<div class="palette-id">${m.id}</div></div>` +
+        `<div class="palette-fp">${m.footprint[0]}×${m.footprint[1]}</div>`;
+      item.addEventListener("click", () => {
+        selectedModule = m.id;
+        document.querySelectorAll(".palette-item").forEach(e => e.classList.remove("selected"));
+        item.classList.add("selected");
+        setStatus(`선택: ${m.name}`);
+        drawCursor();
+      });
+      el.appendChild(item);
     });
-    el.appendChild(item);
   });
 }
 
-// ───── Tool buttons ───────────────────────────────────
+// ═══════════════════════════════════════════════════════
+// Tool buttons + brush size
+// ═══════════════════════════════════════════════════════
 document.querySelectorAll(".tool-btn").forEach(btn => {
   btn.addEventListener("click", () => {
     currentTool = btn.dataset.tool;
     document.querySelectorAll(".tool-btn").forEach(b => b.classList.remove("active"));
     btn.classList.add("active");
+    drawCursor();
   });
 });
 
-// ───── Save / Load ────────────────────────────────────
+const brushSlider = document.getElementById("brush-size");
+const brushVal    = document.getElementById("brush-val");
+function setBrushSize(n) {
+  brushSize = Math.max(1, Math.min(10, n | 0));
+  brushSlider.value = brushSize;
+  brushVal.textContent = `${brushSize}×${brushSize}`;
+  drawCursor();
+}
+brushSlider.addEventListener("input", (e) => setBrushSize(+e.target.value));
+
+// ═══════════════════════════════════════════════════════
+// Save / Load JSON (v2 schema)
+// ═══════════════════════════════════════════════════════
 function exportJSON() {
+  // Sort by layer (bottom→top), then z, then y, then x
+  const layerRank = Object.fromEntries(LAYERS.map((L, i) => [L, i]));
   const placements = Object.values(state.placements)
-    .sort((a, b) => a.y - b.y || a.x - b.x)
+    .sort((a, b) =>
+      (layerRank[a.layer] ?? 99) - (layerRank[b.layer] ?? 99) ||
+      (a.z||0) - (b.z||0) ||
+      a.y - b.y || a.x - b.x
+    )
     .map(p => ({
-      module: p.module, x: p.x, y: p.y,
-      footprint: p.footprint, yaw: p.yaw,
+      module: p.module,
+      x: p.x, y: p.y, z: p.z || 0,
+      layer: p.layer,
+      footprint: p.footprint,
+      yaw: p.yaw || 0,
     }));
   const data = {
-    version: 1,
+    version: SCHEMA_VERSION,
     size: [GRID_W, GRID_H],
     tile_size_m: TILE_SIZE_M,
-    coord_system: { origin: "top-left", x_axis: "right", y_axis: "down" },
+    coord_system: { origin: "top-left", x_axis: "right", y_axis: "down", z_axis: "up" },
     modules_legend: MODULES.map(m => ({
-      id: m.id, name: m.name, color: m.color, footprint: m.footprint,
+      id: m.id, name: m.name, color: m.color,
+      footprint: m.footprint, layer: m.layer,
     })),
     placements,
   };
@@ -471,23 +804,34 @@ function exportJSON() {
   a.download = `tilemap_${ts}.json`;
   a.click();
   URL.revokeObjectURL(url);
-  setStatus(`${placements.length}개 배치 저장됨`);
+  setStatus(`${placements.length}개 배치 저장됨 (v${SCHEMA_VERSION})`);
 }
 
 function importJSON(text) {
   try {
     const data = JSON.parse(text);
     if (!data.placements || !Array.isArray(data.placements)) throw new Error("placements 배열 없음");
+    const ver = data.version || 1;
     pushUndo();
-    state.grid = makeEmptyGrid();
+    state.layers = makeEmptyLayers();
     state.placements = {};
     placementCounter = 0;
-    let n = 0;
+    let n = 0, migrated = 0, skipped = 0;
+    // placeModule auto-routes each placement into the correct layer
+    // based on the module's `layer` property — so a flat placements list
+    // restores the layered structure naturally.
     for (const p of data.placements) {
-      if (placeModule(p.module, p.x, p.y)) n++;
+      let modId = p.module;
+      if (LEGACY_ID_MAP[modId]) { modId = LEGACY_ID_MAP[modId]; migrated++; }
+      if (!getModule(modId)) { skipped++; continue; }
+      const z = p.z || 0;
+      if (placeModule(modId, p.x, p.y, z)) n++;
     }
-    draw();
-    setStatus(`${n}개 배치 불러옴`);
+    drawPlacements();
+    let msg = `${n}개 배치 불러옴 (v${ver}→v${SCHEMA_VERSION})`;
+    if (migrated) msg += ` · ${migrated}개 ID 마이그레이션`;
+    if (skipped) msg += ` · ${skipped}개 미지원 모듈 스킵`;
+    setStatus(msg);
   } catch (err) {
     setStatus("JSON 로드 실패: " + err.message);
   }
@@ -506,7 +850,50 @@ document.getElementById("file-input").addEventListener("change", (e) => {
   e.target.value = "";
 });
 
-// Drag & drop
+// ═══════════════════════════════════════════════════════
+// PNG underlay
+// ═══════════════════════════════════════════════════════
+function loadUnderlayImage(file) {
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = () => {
+    underlayImage = img;
+    drawUnderlay();
+    setStatus(`밑그림 로드: ${img.naturalWidth}×${img.naturalHeight} (${file.name})`);
+    // URL kept alive — img holds the reference; revoked on clear
+    img.dataset_url = url;
+  };
+  img.onerror = () => { setStatus("이미지 로드 실패"); URL.revokeObjectURL(url); };
+  img.src = url;
+}
+
+document.getElementById("btn-load-img").addEventListener("click", () => {
+  document.getElementById("img-input").click();
+});
+document.getElementById("img-input").addEventListener("change", (e) => {
+  const f = e.target.files[0];
+  if (f) loadUnderlayImage(f);
+  e.target.value = "";
+});
+document.getElementById("img-toggle").addEventListener("change", (e) => {
+  underlayVisible = e.target.checked;
+  drawUnderlay();
+});
+document.getElementById("img-opacity").addEventListener("input", (e) => {
+  underlayOpacity = e.target.value / 100;
+  document.getElementById("opacity-val").textContent = e.target.value + "%";
+  drawUnderlay();
+});
+document.getElementById("btn-clear-img").addEventListener("click", () => {
+  if (underlayImage && underlayImage.dataset_url) URL.revokeObjectURL(underlayImage.dataset_url);
+  underlayImage = null;
+  drawUnderlay();
+  setStatus("밑그림 제거됨");
+});
+
+// ═══════════════════════════════════════════════════════
+// Drag & drop — JSON or image, auto-routed by type
+// ═══════════════════════════════════════════════════════
 const dropOverlay = document.getElementById("drop-overlay");
 let dragCounter = 0;
 window.addEventListener("dragenter", (e) => {
@@ -525,39 +912,55 @@ window.addEventListener("drop", (e) => {
   dropOverlay.classList.remove("visible");
   const f = e.dataTransfer.files[0];
   if (!f) return;
-  const r = new FileReader();
-  r.onload = () => importJSON(r.result);
-  r.readAsText(f);
+  const isImage = f.type.startsWith("image/");
+  const isJSON  = f.type === "application/json" || /\.json$/i.test(f.name);
+  if (isImage) {
+    loadUnderlayImage(f);
+  } else if (isJSON) {
+    const r = new FileReader();
+    r.onload = () => importJSON(r.result);
+    r.readAsText(f);
+  } else {
+    setStatus("지원하지 않는 파일 형식: " + f.name);
+  }
 });
 
-// ───── Buttons ────────────────────────────────────────
+// ═══════════════════════════════════════════════════════
+// Buttons / keyboard
+// ═══════════════════════════════════════════════════════
 document.getElementById("btn-undo").addEventListener("click", undo);
 document.getElementById("btn-redo").addEventListener("click", redoFn);
 document.getElementById("btn-clear").addEventListener("click", () => {
-  if (!confirm("전체 삭제할까요?")) return;
+  if (!confirm("전체 삭제할까요? (모든 레이어)")) return;
   pushUndo();
-  state.grid = makeEmptyGrid();
+  state.layers = makeEmptyLayers();
   state.placements = {};
   placementCounter = 0;
-  draw();
+  drawPlacements();
   setStatus("전체 삭제됨");
 });
 
-// ───── Keyboard ───────────────────────────────────────
 window.addEventListener("keydown", (e) => {
   if (e.ctrlKey || e.metaKey) {
     if (e.key === "z" || e.key === "Z") { e.preventDefault(); undo(); }
     if (e.key === "y" || e.key === "Y") { e.preventDefault(); redoFn(); }
+    return;
   }
+  if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return;
+  if (e.key === "[") { e.preventDefault(); setBrushSize(brushSize - 1); }
+  if (e.key === "]") { e.preventDefault(); setBrushSize(brushSize + 1); }
 });
 
-// ───── Status ─────────────────────────────────────────
 function setStatus(msg) { document.getElementById("status").textContent = msg; }
 
-// ───── Init ───────────────────────────────────────────
+// ═══════════════════════════════════════════════════════
+// Init
+// ═══════════════════════════════════════════════════════
 buildPalette();
-draw();
-setStatus("좌측 팔레트에서 모듈 선택 후 캔버스에 그리세요");
+drawGrid();
+drawUnderlay();
+drawPlacements();
+setStatus("128×128 그리드 · 좌측 팔레트에서 모듈 선택 후 캔버스에 그리세요");
 </script>
 </body>
 </html>
