@@ -31,6 +31,7 @@ MODULE_STYLE = {
     "TRN_Base_Grass":     {"height": 1.0, "shape_factor": 1.0, "color": (0.29, 0.60, 0.29)},
     "TRN_Base_Dirt":      {"height": 0.3, "shape_factor": 1.0, "color": (0.48, 0.35, 0.23)},
     "TRN_Base_Stone":     {"height": 1.0, "shape_factor": 1.0, "color": (0.60, 0.60, 0.60)},
+    "TRN_Base_Water":     {"height": 0.2, "shape_factor": 1.0, "color": (0.29, 0.61, 0.81)},
     # Elevation (multi-cell platforms / slopes — height > base)
     "ELV_Platform_Stone": {"height": 2.5, "shape_factor": 1.0, "color": (0.35, 0.35, 0.35)},
     # Environment

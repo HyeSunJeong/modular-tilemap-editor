@@ -295,9 +295,10 @@
   <h2>측정 / 영역 (Annotation)</h2>
   <div style="font-size:11px;color:#888;margin-bottom:4px">모드:</div>
   <div class="mode-row">
-    <button class="mode-btn active" data-mode="rect"  title="드래그로 사각 영역">🟦 사각</button>
+    <button class="mode-btn active" data-mode="rect"   title="드래그로 사각 영역">🟦 사각</button>
     <button class="mode-btn"        data-mode="circle" title="중심→가장자리 드래그">⭕ 원</button>
-    <button class="mode-btn"        data-mode="path"  title="클릭으로 점 추가">📍 경로</button>
+    <button class="mode-btn"        data-mode="path"   title="클릭으로 점 추가">📍 경로</button>
+    <button class="mode-btn"        data-mode="move"   title="저장된 영역 선택+드래그로 이동">✋ 이동</button>
   </div>
 
   <div id="measure-info" style="margin-top:6px">
@@ -352,6 +353,7 @@ const MODULES = [
   { id: "TRN_Base_Grass",    name: "잔디",            color: "#4a9a4a", footprint: [1,1], layer: "base" },
   { id: "TRN_Base_Dirt",     name: "흙",              color: "#7a5a3a", footprint: [1,1], layer: "base" },
   { id: "TRN_Base_Stone",    name: "돌바닥",          color: "#9a9a9a", footprint: [1,1], layer: "base" },
+  { id: "TRN_Base_Water",    name: "물 (얕은)",       color: "#4a9bce", footprint: [1,1], layer: "base" },
   // Elevation — multi-cell platforms / slopes (height ≠ 0)
   { id: "ELV_Platform_Stone", name: "돌 플랫폼 (5×5)", color: "#5a5a5a", footprint: [5,5], layer: "elevation" },
   // Environment — props on top of base
@@ -420,11 +422,15 @@ let zoom = 1.0;
 const ANN_COLORS = ["#ff6b6b","#4ecdc4","#ffd166","#a78bfa","#06d6a0","#ffa07a","#ec4899","#60a5fa"];
 const WALK_SPEED_MPS = 1.4;  // walking speed for path ETA
 
-let measureMode = "rect";    // "rect" | "circle" | "path"
+let measureMode = "rect";    // "rect" | "circle" | "path" | "move"
 let currentMeasure = null;   // shape-specific data; null when idle
 let measureActive = false;   // mouse held for drag-based modes (rect/circle)
 let annotations = [];        // saved annotations [{id,type,label,color,...shape}]
 let annCounter = 0;
+// Selection / drag-move state for "move" mode
+let selectedAnnId = null;
+let isDraggingAnn = false;
+let dragLastCell = null;     // {x, y} last cursor cell during drag (incremental delta)
 
 function makeEmptyGrid() {
   const g = [];
@@ -893,9 +899,91 @@ function pathLength(points) {
   return total;
 }
 
+// Distance from point (px, py) to line segment (ax,ay)–(bx,by)
+function distToSegment(px, py, ax, ay, bx, by) {
+  const dx = bx - ax, dy = by - ay;
+  const len2 = dx*dx + dy*dy;
+  if (len2 === 0) return Math.hypot(px - ax, py - ay);
+  let t = ((px - ax) * dx + (py - ay) * dy) / len2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (ax + t*dx), py - (ay + t*dy));
+}
+
+// Return id of topmost annotation under cell (x, y), or null.
+// Iterates back-to-front so the most recently added annotation wins.
+function hitTestAnnotation(x, y) {
+  for (let i = annotations.length - 1; i >= 0; i--) {
+    const a = annotations[i];
+    if (a.type === "rect") {
+      if (x >= a.x && x < a.x + a.w && y >= a.y && y < a.y + a.h) return a.id;
+    } else if (a.type === "circle") {
+      const dx = x - a.cx, dy = y - a.cy;
+      if (Math.hypot(dx, dy) <= a.r) return a.id;
+    } else if (a.type === "path") {
+      // Hit if cursor is within 1 cell of any segment (or any point)
+      for (const p of a.points) {
+        if (Math.hypot(x - p.x, y - p.y) < 1.2) return a.id;
+      }
+      for (let j = 1; j < a.points.length; j++) {
+        const p0 = a.points[j-1], p1 = a.points[j];
+        if (distToSegment(x, y, p0.x, p0.y, p1.x, p1.y) < 0.8) return a.id;
+      }
+    }
+  }
+  return null;
+}
+
+// Translate annotation by (dx, dy) cells.
+function translateAnnotation(id, dx, dy) {
+  const a = annotations.find(a => a.id === id);
+  if (!a) return;
+  if (a.type === "rect")        { a.x += dx; a.y += dy; }
+  else if (a.type === "circle") { a.cx += dx; a.cy += dy; }
+  else if (a.type === "path")   { a.points.forEach(p => { p.x += dx; p.y += dy; }); }
+}
+
+function deselectAnnotation() {
+  if (selectedAnnId === null) return;
+  selectedAnnId = null;
+  isDraggingAnn = false;
+  dragLastCell = null;
+  drawAnnotations();
+  updateMeasurePanel();
+}
+
 // Update the right-panel measurement info text based on mode + currentMeasure
 function updateMeasurePanel() {
   const el = document.getElementById("measure-info");
+
+  // Move mode shows selected annotation info instead of measurement
+  if (measureMode === "move") {
+    if (selectedAnnId === null) {
+      el.innerHTML = `<span class="hint">저장된 영역 클릭으로 선택<br>드래그하여 이동<br><kbd>ESC</kbd> 해제 / <kbd>Del</kbd> 삭제</span>`;
+      return;
+    }
+    const a = annotations.find(x => x.id === selectedAnnId);
+    if (!a) { el.innerHTML = ""; return; }
+    let info = `<div class="row"><b>${escapeHTML(a.label)}</b></div>` +
+               `<hr style="margin:6px 0;border-color:#2c2c2c">`;
+    if (a.type === "rect") {
+      info += `<div class="row">위치: (${a.x}, ${a.y})</div>` +
+              `<div class="row">크기: ${a.w} × ${a.h}</div>` +
+              `<div class="row">영역: ${a.w * a.h} m²</div>`;
+    } else if (a.type === "circle") {
+      info += `<div class="row">중심: (${a.cx}, ${a.cy})</div>` +
+              `<div class="row">반경: ${a.r.toFixed(2)} m</div>` +
+              `<div class="row">영역: ${(Math.PI*a.r*a.r).toFixed(1)} m²</div>`;
+    } else if (a.type === "path") {
+      info += `<div class="row">시작: (${a.points[0].x}, ${a.points[0].y})</div>` +
+              `<div class="row">포인트: ${a.points.length}개</div>` +
+              `<div class="row">총 거리: ${pathLength(a.points).toFixed(2)} m</div>`;
+    }
+    info += `<hr style="margin:6px 0;border-color:#2c2c2c">` +
+            `<div class="row" style="color:#888;font-size:10px">드래그로 이동 가능</div>`;
+    el.innerHTML = info;
+    return;
+  }
+
   if (!currentMeasure) {
     el.innerHTML = `<span class="hint">모드 선택 후 캔버스에서<br>드래그 (사각/원) 또는 클릭 (경로)</span>`;
     return;
@@ -966,17 +1054,20 @@ function clearMeasure() {
 // ── Annotation rendering (persistent overlay canvas) ───
 function drawAnnotations() {
   annCtx.clearRect(0, 0, annCanvas.width, annCanvas.height);
+  // Selection highlight only shows when user is in "move" mode of measure tool
+  const showSel = (currentTool === "measure" && measureMode === "move");
   for (const a of annotations) {
-    drawSingleAnnotation(annCtx, a, false);
+    drawSingleAnnotation(annCtx, a, showSel && a.id === selectedAnnId);
   }
 }
 
-function drawSingleAnnotation(c, a, isPreview) {
-  const fillCol = a.color + "33";  // ~20% alpha
+function drawSingleAnnotation(c, a, isSelected) {
+  const fillCol = a.color + (isSelected ? "55" : "33");  // selected: brighter fill
   const strokeCol = a.color;
   c.fillStyle = fillCol;
   c.strokeStyle = strokeCol;
-  c.lineWidth = 2;
+  c.lineWidth = isSelected ? 3 : 2;
+  if (isSelected) c.setLineDash([6, 4]);
   c.font = "bold 11px 'Segoe UI', monospace";
 
   if (a.type === "rect") {
@@ -1043,6 +1134,7 @@ function drawSingleAnnotation(c, a, isPreview) {
       c.fillText(text, fx + padding, fy + 12);
     }
   }
+  c.setLineDash([]);  // reset so subsequent draws aren't dashed
 }
 
 // ── Annotation save / delete / list ────────────────────
@@ -1098,16 +1190,20 @@ function saveCurrentAsAnnotation() {
 
 function deleteAnnotation(id) {
   annotations = annotations.filter(a => a.id !== id);
+  if (selectedAnnId === id) selectedAnnId = null;
   drawAnnotations();
   updateAnnotationList();
+  if (measureMode === "move") updateMeasurePanel();
 }
 
 function clearAllAnnotations() {
   if (annotations.length === 0) return;
   if (!confirm(`저장된 영역 ${annotations.length}개를 모두 삭제할까요?`)) return;
   annotations = [];
+  selectedAnnId = null;
   drawAnnotations();
   updateAnnotationList();
+  if (measureMode === "move") updateMeasurePanel();
   setStatus("모든 영역 삭제됨");
 }
 
@@ -1186,13 +1282,26 @@ canvas.addEventListener("mousedown", (e) => {
         currentMeasure = { center: { x, y }, edge: { x, y } };
         measureActive = true;
       } else if (measureMode === "path") {
-        // Each click adds a point; double-click click2 lands on same cell (handled below)
+        // Each click adds a point
         if (!currentMeasure) currentMeasure = { points: [{ x, y }] };
         else currentMeasure.points.push({ x, y });
-        measureActive = false;  // no drag for path
+        measureActive = false;
+      } else if (measureMode === "move") {
+        // Click on annotation → select; click on empty → deselect
+        const hitId = hitTestAnnotation(x, y);
+        if (hitId) {
+          selectedAnnId = hitId;
+          isDraggingAnn = true;
+          dragLastCell = { x, y };
+        } else {
+          selectedAnnId = null;
+          isDraggingAnn = false;
+        }
+        drawAnnotations();
+        drawCursor();
       }
       updateMeasurePanel();
-      drawCursor();
+      if (measureMode !== "move") drawCursor();
     } else if (e.button === 2) {
       // Right-click in path mode: remove last point (or clear if only one)
       if (measureMode === "path" && currentMeasure && currentMeasure.points.length > 0) {
@@ -1240,6 +1349,17 @@ canvas.addEventListener("mousemove", (e) => {
       }
       updateMeasurePanel();
     }
+    // Move mode: drag selected annotation by cell delta
+    if (measureMode === "move" && isDraggingAnn && selectedAnnId && dragLastCell) {
+      const dx = x - dragLastCell.x;
+      const dy = y - dragLastCell.y;
+      if (dx !== 0 || dy !== 0) {
+        translateAnnotation(selectedAnnId, dx, dy);
+        dragLastCell = { x, y };
+        drawAnnotations();
+        updateMeasurePanel();
+      }
+    }
     // For path mode, hoverCell already updated above → cursor preview line draws automatically
   }
 
@@ -1263,6 +1383,11 @@ window.addEventListener("mouseup", () => {
   isDrawing = false;
   lastDrawCell = null;
   measureActive = false;  // finalize current measurement (keeps last result visible)
+  if (isDraggingAnn) {
+    isDraggingAnn = false;
+    dragLastCell = null;
+    updateAnnotationList();  // refresh list (positions in details may have changed)
+  }
 });
 canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
@@ -1388,6 +1513,13 @@ document.querySelectorAll(".mode-btn").forEach(btn => {
     // Discard in-progress measurement when mode changes
     currentMeasure = null;
     measureActive = false;
+    // Leaving "move" mode → deselect; entering "move" → keep current selection if any
+    if (measureMode !== "move") {
+      selectedAnnId = null;
+      isDraggingAnn = false;
+      dragLastCell = null;
+      drawAnnotations();
+    }
     updateMeasurePanel();
     drawCursor();
     // Auto-switch tool to measure if not already
@@ -1418,6 +1550,7 @@ document.querySelectorAll(".tool-btn").forEach(btn => {
     document.querySelectorAll(".tool-btn").forEach(b => b.classList.remove("active"));
     btn.classList.add("active");
     drawCursor();
+    drawAnnotations();  // refresh selection visual (only shows in measure+move)
   });
 });
 
@@ -1633,6 +1766,18 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "[") { e.preventDefault(); setBrushSize(brushSize - 1); }
   if (e.key === "]") { e.preventDefault(); setBrushSize(brushSize + 1); }
   if (e.key === "0") { e.preventDefault(); applyZoom(1.0); }
+  // Move mode shortcuts
+  if (currentTool === "measure" && measureMode === "move") {
+    if (e.key === "Escape") { e.preventDefault(); deselectAnnotation(); }
+    if (e.key === "Delete" || e.key === "Backspace") {
+      if (selectedAnnId !== null) {
+        e.preventDefault();
+        deleteAnnotation(selectedAnnId);
+        selectedAnnId = null;
+        updateMeasurePanel();
+      }
+    }
+  }
 });
 
 function setStatus(msg) { document.getElementById("status").textContent = msg; }
