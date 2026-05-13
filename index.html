@@ -2,26 +2,28 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>Tilemap Editor — 128×128 (v0.2)</title>
+<title>Tilemap Editor — 128×128 (v0.3.1)</title>
 <style>
   * { box-sizing: border-box; }
   body {
     margin: 0; font-family: 'Segoe UI', sans-serif;
     background: #1a1a1a; color: #eee;
     display: flex; min-height: 100vh;
-    overflow: auto; min-width: 1320px;
+    overflow: auto; min-width: 1580px;
   }
-  #sidebar {
-    width: 280px; padding: 14px;
-    border-right: 1px solid #333;
+  #sidebar, #sidebar-right {
+    padding: 14px;
     overflow-y: auto;
     flex-shrink: 0;
     height: 100vh;
     position: sticky; top: 0;
   }
+  #sidebar       { width: 280px; border-right: 1px solid #333; }
+  #sidebar-right { width: 240px; border-left:  1px solid #333; }
   #main {
     flex: 1; display: flex; flex-direction: column;
-    align-items: center; justify-content: flex-start; padding: 16px;
+    align-items: flex-start; justify-content: flex-start; padding: 16px;
+    overflow: auto;
   }
   h2 {
     margin: 14px 0 6px; font-size: 12px; color: #888;
@@ -80,23 +82,97 @@
   .row input[type="range"] { flex: 1; }
   .row input[type="checkbox"] { accent-color: #5a9bdc; }
   #opacity-val { font-family: monospace; font-size: 11px; color: #aaa; min-width: 36px; text-align: right; }
-  /* Layered canvas */
+  /* Layered canvas — size set in JS based on zoom (default 1024×1024) */
   #canvas-wrap {
     position: relative;
-    width: 1024px; height: 1024px;
     box-shadow: 0 0 0 1px #444, 0 8px 24px rgba(0,0,0,0.4);
     background: #0a0a0a;
     flex-shrink: 0;
   }
   #canvas-wrap canvas {
     position: absolute; left: 0; top: 0;
-    width: 1024px; height: 1024px;
     image-rendering: pixelated;
+    width: 100%; height: 100%;
   }
-  #canvas-underlay { z-index: 1; pointer-events: none; }
-  #canvas-grid     { z-index: 2; pointer-events: none; }
-  #canvas          { z-index: 3; cursor: crosshair; }
-  #canvas-cursor   { z-index: 4; pointer-events: none; }
+  #canvas-underlay    { z-index: 1; pointer-events: none; }
+  #canvas-grid        { z-index: 2; pointer-events: none; }
+  #canvas             { z-index: 3; cursor: crosshair; }
+  #canvas-annotations { z-index: 4; pointer-events: none; }
+  #canvas-cursor      { z-index: 5; pointer-events: none; }
+
+  /* Zoom panel buttons */
+  .zoom-row { display: flex; gap: 4px; }
+  .zoom-row button {
+    flex: 1; padding: 6px 0; font-size: 13px;
+    background: #252525; border: 1px solid #3a3a3a; color: #eee;
+    cursor: pointer; border-radius: 4px; font-family: inherit;
+  }
+  .zoom-row button:hover { background: #303030; }
+  #zoom-val {
+    font-family: monospace; font-size: 13px; color: #aaa;
+    text-align: center; padding: 6px 0;
+  }
+
+  /* Measure panel */
+  #measure-info {
+    font-size: 11px; line-height: 1.6; color: #bbb;
+    padding: 8px 6px;
+    background: #1a1a1a; border: 1px solid #2c2c2c;
+    border-radius: 4px;
+    font-family: monospace;
+  }
+  #measure-info b { color: #ffc850; }
+  #measure-info .row { margin: 1px 0; }
+  #measure-info .hint { color: #666; font-style: italic; font-family: inherit; }
+
+  /* Mode selector */
+  .mode-row { display: flex; gap: 3px; }
+  .mode-btn {
+    flex: 1; padding: 6px 0; font-size: 11px;
+    background: #252525; border: 1px solid #3a3a3a; color: #eee;
+    cursor: pointer; border-radius: 3px; font-family: inherit;
+    min-width: 0;
+  }
+  .mode-btn:hover { background: #303030; }
+  .mode-btn.active { background: #1a3a5a; border-color: #5a9bdc; color: #fff; }
+
+  /* Annotation label input */
+  #ann-label {
+    width: 100%; padding: 6px 8px;
+    background: #1a1a1a; border: 1px solid #3a3a3a; color: #eee;
+    border-radius: 3px; font-size: 12px; font-family: inherit;
+    margin-bottom: 4px;
+  }
+  #ann-label:focus { outline: none; border-color: #5a9bdc; }
+
+  /* Annotation list */
+  #ann-list {
+    font-size: 11px;
+    max-height: 200px; overflow-y: auto;
+    background: #161616; border: 1px solid #2c2c2c;
+    border-radius: 4px; padding: 4px;
+  }
+  .ann-item {
+    display: flex; align-items: center; gap: 6px;
+    padding: 4px 6px; margin: 2px 0;
+    background: #1f1f1f; border-radius: 3px;
+    font-family: monospace; font-size: 10px;
+  }
+  .ann-item:hover { background: #2a2a2a; }
+  .ann-color {
+    width: 12px; height: 12px; border-radius: 2px;
+    flex-shrink: 0; border: 1px solid rgba(255,255,255,0.2);
+  }
+  .ann-body { flex: 1; min-width: 0; line-height: 1.3; }
+  .ann-label { color: #ddd; font-weight: 600; overflow: hidden;
+               text-overflow: ellipsis; white-space: nowrap; }
+  .ann-detail { color: #888; font-size: 9px; }
+  .ann-item button {
+    padding: 2px 6px; background: #3a2020;
+    border: 1px solid #5a3030; color: #eee;
+    cursor: pointer; border-radius: 2px; font-size: 10px;
+  }
+  .ann-item button:hover { background: #5a3030; }
   #status {
     color: #888; font-size: 12px; margin-top: 12px;
     height: 16px; min-width: 320px; text-align: center;
@@ -128,6 +204,7 @@
     <button class="tool-btn active" data-tool="pen">펜</button>
     <button class="tool-btn" data-tool="bucket">채우기</button>
     <button class="tool-btn" data-tool="eraser">지우개</button>
+    <button class="tool-btn" data-tool="measure">측정</button>
   </div>
 
   <h2>브러시 크기 (펜/지우개)</h2>
@@ -192,12 +269,64 @@
 
 <div id="main">
   <div id="canvas-wrap">
-    <canvas id="canvas-underlay" width="1024" height="1024"></canvas>
-    <canvas id="canvas-grid"     width="1024" height="1024"></canvas>
-    <canvas id="canvas"          width="1024" height="1024"></canvas>
-    <canvas id="canvas-cursor"   width="1024" height="1024"></canvas>
+    <canvas id="canvas-underlay"    width="1024" height="1024"></canvas>
+    <canvas id="canvas-grid"        width="1024" height="1024"></canvas>
+    <canvas id="canvas"             width="1024" height="1024"></canvas>
+    <canvas id="canvas-annotations" width="1024" height="1024"></canvas>
+    <canvas id="canvas-cursor"      width="1024" height="1024"></canvas>
   </div>
   <div id="status">준비 완료</div>
+</div>
+
+<div id="sidebar-right">
+  <h2>줌 (Zoom)</h2>
+  <div id="zoom-val">100%</div>
+  <div class="zoom-row">
+    <button id="btn-zoom-out" title="줌 아웃">−</button>
+    <button id="btn-zoom-reset" title="100%로 리셋">Reset</button>
+    <button id="btn-zoom-in" title="줌 인">+</button>
+  </div>
+  <div class="info" style="margin-top:6px">
+    <kbd>마우스 휠</kbd> 줌 인/아웃<br>
+    <kbd>0</kbd> 100% 리셋<br>
+    범위: 50% ~ 400%
+  </div>
+
+  <h2>측정 / 영역 (Annotation)</h2>
+  <div style="font-size:11px;color:#888;margin-bottom:4px">모드:</div>
+  <div class="mode-row">
+    <button class="mode-btn active" data-mode="rect"  title="드래그로 사각 영역">🟦 사각</button>
+    <button class="mode-btn"        data-mode="circle" title="중심→가장자리 드래그">⭕ 원</button>
+    <button class="mode-btn"        data-mode="path"  title="클릭으로 점 추가">📍 경로</button>
+  </div>
+
+  <div id="measure-info" style="margin-top:6px">
+    <span class="hint">모드 선택 후 캔버스에서<br>드래그 (사각/원) 또는 클릭 (경로)</span>
+  </div>
+
+  <div class="actions" style="margin-top:6px">
+    <input type="text" id="ann-label" placeholder="라벨 (예: 보스존 A, NPC 시선)" maxlength="40">
+    <button class="action-btn" id="btn-ann-save">💾 영역 저장</button>
+    <button class="action-btn" id="btn-measure-clear" style="font-size:11px">현재 측정 지우기</button>
+  </div>
+
+  <h2>저장된 영역</h2>
+  <div id="ann-list">
+    <span style="color:#666;font-style:italic;font-size:11px;padding:6px;display:block">아직 저장된 영역 없음</span>
+  </div>
+  <button class="action-btn" id="btn-ann-clear-all" style="margin-top:4px;font-size:11px;padding:5px">전체 영역 삭제</button>
+
+  <div class="info" style="margin-top:6px">
+    <kbd>사각</kbd>: 영역 크기·면적 (몬스터존, 보스존)<br>
+    <kbd>원</kbd>: 반경·둘레 (NPC 시선, 스킬 범위)<br>
+    <kbd>경로</kbd>: 클릭 누적, 총 거리·이동시간<br>
+    이동속도: 1.4 m/s (걷기 기준)
+  </div>
+
+  <h2>현재 셀</h2>
+  <div id="cell-info" style="font-size:11px;font-family:monospace;color:#bbb;padding:6px;background:#1a1a1a;border:1px solid #2c2c2c;border-radius:4px;line-height:1.5">
+    <span class="hint" style="color:#666;font-style:italic">캔버스 위로 마우스 이동</span>
+  </div>
 </div>
 
 <div id="drop-overlay">파일을 여기에 드롭 (.json 또는 .png)</div>
@@ -274,6 +403,28 @@ let hoverCell = null;          // {x,y} or null — for cursor preview
 let underlayImage = null;
 let underlayVisible = true;
 let underlayOpacity = 0.5;
+
+// ── Zoom ──────────────────────────────────────────────
+const ZOOM_MIN = 0.5;           // 50%
+const ZOOM_MAX = 4.0;           // 400%
+const ZOOM_STEP = 0.1;          // 10% per wheel notch
+const BASE_CANVAS_PX = GRID_W * CELL_PX;  // 1024 — internal canvas size, unchanged by zoom
+let zoom = 1.0;
+
+// ── Measure / Annotation ──────────────────────────────
+// "측정" tool has 3 modes selectable from right panel:
+//   rect   — drag corner-to-corner, area/dimensions
+//   circle — drag center-to-edge, radius/area/circumference
+//   path   — click-to-add points, segment + total distance
+// Each measurement can be saved as an annotation (persistent overlay).
+const ANN_COLORS = ["#ff6b6b","#4ecdc4","#ffd166","#a78bfa","#06d6a0","#ffa07a","#ec4899","#60a5fa"];
+const WALK_SPEED_MPS = 1.4;  // walking speed for path ETA
+
+let measureMode = "rect";    // "rect" | "circle" | "path"
+let currentMeasure = null;   // shape-specific data; null when idle
+let measureActive = false;   // mouse held for drag-based modes (rect/circle)
+let annotations = [];        // saved annotations [{id,type,label,color,...shape}]
+let annCounter = 0;
 
 function makeEmptyGrid() {
   const g = [];
@@ -469,10 +620,12 @@ function bucketFill(x, y, moduleId) {
 const underlayCanvas = document.getElementById("canvas-underlay");
 const gridCanvas     = document.getElementById("canvas-grid");
 const canvas         = document.getElementById("canvas");
+const annCanvas      = document.getElementById("canvas-annotations");
 const cursorCanvas   = document.getElementById("canvas-cursor");
 const underlayCtx    = underlayCanvas.getContext("2d");
 const gridCtx        = gridCanvas.getContext("2d");
 const ctx            = canvas.getContext("2d");
+const annCtx         = annCanvas.getContext("2d");
 const cursorCtx      = cursorCanvas.getContext("2d");
 
 // ── Grid (drawn once) ──────────────────────────────────
@@ -607,6 +760,13 @@ function eraseStamp(x, y, moduleId, size) {
 // ═══════════════════════════════════════════════════════
 function drawCursor() {
   cursorCtx.clearRect(0, 0, cursorCanvas.width, cursorCanvas.height);
+
+  // Measure tool has its own overlay (ruler line + bounding box)
+  if (currentTool === "measure") {
+    drawMeasureOverlay();
+    return;
+  }
+
   if (!hoverCell) return;
   const { x, y } = hoverCell;
 
@@ -638,21 +798,413 @@ function drawCursor() {
   cursorCtx.strokeRect(rx + 0.5, ry + 0.5, rw - 1, rh - 1);
 }
 
+// ── Measurement overlay — dispatches by mode ───────────
+function drawMeasureOverlay() {
+  // Hover preview (single cell) when no measurement in progress
+  if (!currentMeasure) {
+    if (hoverCell) {
+      cursorCtx.strokeStyle = "rgba(255,200,80,0.8)";
+      cursorCtx.lineWidth = 1.5;
+      cursorCtx.strokeRect(hoverCell.x * CELL_PX + 0.5, hoverCell.y * CELL_PX + 0.5,
+                           CELL_PX - 1, CELL_PX - 1);
+    }
+    return;
+  }
+  cursorCtx.fillStyle   = "rgba(255,200,80,0.10)";
+  cursorCtx.strokeStyle = "rgba(255,200,80,1.0)";
+  cursorCtx.lineWidth   = 2;
+
+  if (measureMode === "rect") {
+    const s = currentMeasure.start, e = currentMeasure.end;
+    const minx = Math.min(s.x, e.x) * CELL_PX;
+    const miny = Math.min(s.y, e.y) * CELL_PX;
+    const maxx = (Math.max(s.x, e.x) + 1) * CELL_PX;
+    const maxy = (Math.max(s.y, e.y) + 1) * CELL_PX;
+    cursorCtx.fillRect(minx, miny, maxx - minx, maxy - miny);
+    cursorCtx.strokeRect(minx + 0.5, miny + 0.5, maxx - minx - 1, maxy - miny - 1);
+    // Diagonal ruler line between cell centers
+    cursorCtx.beginPath();
+    cursorCtx.moveTo((s.x + 0.5) * CELL_PX, (s.y + 0.5) * CELL_PX);
+    cursorCtx.lineTo((e.x + 0.5) * CELL_PX, (e.y + 0.5) * CELL_PX);
+    cursorCtx.stroke();
+    // Endpoint dots
+    cursorCtx.fillStyle = "rgba(255,200,80,1.0)";
+    cursorCtx.beginPath();
+    cursorCtx.arc((s.x + 0.5) * CELL_PX, (s.y + 0.5) * CELL_PX, 3, 0, 2*Math.PI); cursorCtx.fill();
+    cursorCtx.beginPath();
+    cursorCtx.arc((e.x + 0.5) * CELL_PX, (e.y + 0.5) * CELL_PX, 3, 0, 2*Math.PI); cursorCtx.fill();
+  }
+  else if (measureMode === "circle") {
+    const c = currentMeasure.center, e = currentMeasure.edge;
+    const cx = (c.x + 0.5) * CELL_PX, cy = (c.y + 0.5) * CELL_PX;
+    const ex = (e.x + 0.5) * CELL_PX, ey = (e.y + 0.5) * CELL_PX;
+    const r = Math.hypot(ex - cx, ey - cy);
+    cursorCtx.beginPath();
+    cursorCtx.arc(cx, cy, r, 0, 2*Math.PI);
+    cursorCtx.fill();
+    cursorCtx.stroke();
+    // Radius line + dots
+    cursorCtx.beginPath();
+    cursorCtx.moveTo(cx, cy); cursorCtx.lineTo(ex, ey);
+    cursorCtx.stroke();
+    cursorCtx.fillStyle = "rgba(255,200,80,1.0)";
+    cursorCtx.beginPath(); cursorCtx.arc(cx, cy, 3, 0, 2*Math.PI); cursorCtx.fill();
+    cursorCtx.beginPath(); cursorCtx.arc(ex, ey, 3, 0, 2*Math.PI); cursorCtx.fill();
+  }
+  else if (measureMode === "path") {
+    const pts = currentMeasure.points;
+    if (pts.length === 0) return;
+    cursorCtx.beginPath();
+    cursorCtx.moveTo((pts[0].x + 0.5) * CELL_PX, (pts[0].y + 0.5) * CELL_PX);
+    for (let i = 1; i < pts.length; i++)
+      cursorCtx.lineTo((pts[i].x + 0.5) * CELL_PX, (pts[i].y + 0.5) * CELL_PX);
+    cursorCtx.stroke();
+    // Preview line from last point to current hover
+    if (hoverCell) {
+      const last = pts[pts.length - 1];
+      cursorCtx.setLineDash([4, 4]);
+      cursorCtx.beginPath();
+      cursorCtx.moveTo((last.x + 0.5) * CELL_PX, (last.y + 0.5) * CELL_PX);
+      cursorCtx.lineTo((hoverCell.x + 0.5) * CELL_PX, (hoverCell.y + 0.5) * CELL_PX);
+      cursorCtx.stroke();
+      cursorCtx.setLineDash([]);
+    }
+    // Dots at each point with sequence number
+    cursorCtx.fillStyle = "rgba(255,200,80,1.0)";
+    cursorCtx.font = "bold 11px monospace";
+    pts.forEach((p, i) => {
+      const px = (p.x + 0.5) * CELL_PX, py = (p.y + 0.5) * CELL_PX;
+      cursorCtx.beginPath();
+      cursorCtx.arc(px, py, 4, 0, 2*Math.PI);
+      cursorCtx.fill();
+      cursorCtx.fillStyle = "#000";
+      cursorCtx.fillText(`${i}`, px - 3, py + 4);
+      cursorCtx.fillStyle = "rgba(255,200,80,1.0)";
+    });
+  }
+}
+
+// Total path length in cells (= meters since tile_m = 1)
+function pathLength(points) {
+  let total = 0;
+  for (let i = 1; i < points.length; i++) {
+    total += Math.hypot(points[i].x - points[i-1].x, points[i].y - points[i-1].y);
+  }
+  return total;
+}
+
+// Update the right-panel measurement info text based on mode + currentMeasure
+function updateMeasurePanel() {
+  const el = document.getElementById("measure-info");
+  if (!currentMeasure) {
+    el.innerHTML = `<span class="hint">모드 선택 후 캔버스에서<br>드래그 (사각/원) 또는 클릭 (경로)</span>`;
+    return;
+  }
+  if (measureMode === "rect") {
+    const s = currentMeasure.start, e = currentMeasure.end;
+    const dx = e.x - s.x, dy = e.y - s.y;
+    const eu = Math.hypot(dx, dy);
+    const ma = Math.abs(dx) + Math.abs(dy);
+    const w  = Math.abs(dx) + 1, h = Math.abs(dy) + 1;
+    el.innerHTML =
+      `<div class="row">시작: (${s.x}, ${s.y})</div>` +
+      `<div class="row">끝&nbsp;&nbsp;: (${e.x}, ${e.y})</div>` +
+      `<hr style="margin:6px 0;border-color:#2c2c2c">` +
+      `<div class="row">대각선: <b>${eu.toFixed(2)} m</b></div>` +
+      `<div class="row">격자 거리: <b>${ma} m</b></div>` +
+      `<div class="row">가로 × 세로: <b>${w} × ${h}</b></div>` +
+      `<div class="row">영역: <b>${w * h} m²</b></div>`;
+  }
+  else if (measureMode === "circle") {
+    const c = currentMeasure.center, e = currentMeasure.edge;
+    const r = Math.hypot(e.x - c.x, e.y - c.y);
+    const area = Math.PI * r * r;
+    const circ = 2 * Math.PI * r;
+    el.innerHTML =
+      `<div class="row">중심: (${c.x}, ${c.y})</div>` +
+      `<div class="row">가장자리: (${e.x}, ${e.y})</div>` +
+      `<hr style="margin:6px 0;border-color:#2c2c2c">` +
+      `<div class="row">반경 (r): <b>${r.toFixed(2)} m</b></div>` +
+      `<div class="row">지름 (d): <b>${(2 * r).toFixed(2)} m</b></div>` +
+      `<div class="row">둘레: <b>${circ.toFixed(2)} m</b></div>` +
+      `<div class="row">영역 (πr²): <b>${area.toFixed(1)} m²</b></div>`;
+  }
+  else if (measureMode === "path") {
+    const pts = currentMeasure.points;
+    const n = pts.length;
+    const total = pathLength(pts);
+    const eta = total / WALK_SPEED_MPS;
+    let html = `<div class="row">포인트 수: <b>${n}</b></div>`;
+    if (n >= 2) {
+      const segments = [];
+      for (let i = 1; i < n; i++) {
+        const d = Math.hypot(pts[i].x - pts[i-1].x, pts[i].y - pts[i-1].y);
+        segments.push(`&nbsp;&nbsp;${i-1}→${i}: ${d.toFixed(2)} m`);
+      }
+      html +=
+        `<hr style="margin:6px 0;border-color:#2c2c2c">` +
+        `<div class="row" style="color:#888;font-size:10px">세그먼트:</div>` +
+        segments.slice(0, 8).map(s => `<div class="row" style="font-size:10px">${s}</div>`).join("") +
+        (segments.length > 8 ? `<div class="row" style="font-size:10px;color:#666">… +${segments.length - 8}개</div>` : "") +
+        `<hr style="margin:6px 0;border-color:#2c2c2c">` +
+        `<div class="row">총 거리: <b>${total.toFixed(2)} m</b></div>` +
+        `<div class="row">이동시간: <b>${eta.toFixed(1)} s</b> @1.4m/s</div>`;
+    } else {
+      html += `<div class="row" style="color:#888">점을 더 추가하세요…</div>`;
+    }
+    el.innerHTML = html;
+  }
+}
+
+function clearMeasure() {
+  currentMeasure = null;
+  measureActive = false;
+  updateMeasurePanel();
+  drawCursor();
+}
+
+// ── Annotation rendering (persistent overlay canvas) ───
+function drawAnnotations() {
+  annCtx.clearRect(0, 0, annCanvas.width, annCanvas.height);
+  for (const a of annotations) {
+    drawSingleAnnotation(annCtx, a, false);
+  }
+}
+
+function drawSingleAnnotation(c, a, isPreview) {
+  const fillCol = a.color + "33";  // ~20% alpha
+  const strokeCol = a.color;
+  c.fillStyle = fillCol;
+  c.strokeStyle = strokeCol;
+  c.lineWidth = 2;
+  c.font = "bold 11px 'Segoe UI', monospace";
+
+  if (a.type === "rect") {
+    const px = a.x * CELL_PX, py = a.y * CELL_PX;
+    const pw = a.w * CELL_PX, ph = a.h * CELL_PX;
+    c.fillRect(px, py, pw, ph);
+    c.strokeRect(px + 0.5, py + 0.5, pw - 1, ph - 1);
+    // Label background pill
+    if (a.label) {
+      const text = a.label;
+      const padding = 4;
+      const metrics = c.measureText(text);
+      const labelW = metrics.width + padding * 2;
+      const labelH = 16;
+      c.fillStyle = strokeCol;
+      c.fillRect(px, py - labelH, labelW, labelH);
+      c.fillStyle = "#000";
+      c.fillText(text, px + padding, py - 4);
+    }
+  } else if (a.type === "circle") {
+    const cx = (a.cx + 0.5) * CELL_PX;
+    const cy = (a.cy + 0.5) * CELL_PX;
+    const rPx = a.r * CELL_PX;
+    c.beginPath(); c.arc(cx, cy, rPx, 0, 2*Math.PI); c.fill(); c.stroke();
+    // Center marker
+    c.fillStyle = strokeCol;
+    c.beginPath(); c.arc(cx, cy, 3, 0, 2*Math.PI); c.fill();
+    if (a.label) {
+      const text = a.label;
+      const padding = 4;
+      const metrics = c.measureText(text);
+      const labelW = metrics.width + padding * 2;
+      const labelH = 16;
+      c.fillStyle = strokeCol;
+      c.fillRect(cx - labelW / 2, cy - rPx - labelH - 4, labelW, labelH);
+      c.fillStyle = "#000";
+      c.fillText(text, cx - labelW / 2 + padding, cy - rPx - 8);
+    }
+  } else if (a.type === "path") {
+    if (a.points.length < 2) return;
+    c.beginPath();
+    c.moveTo((a.points[0].x + 0.5) * CELL_PX, (a.points[0].y + 0.5) * CELL_PX);
+    for (let i = 1; i < a.points.length; i++) {
+      c.lineTo((a.points[i].x + 0.5) * CELL_PX, (a.points[i].y + 0.5) * CELL_PX);
+    }
+    c.stroke();
+    c.fillStyle = strokeCol;
+    a.points.forEach(p => {
+      c.beginPath();
+      c.arc((p.x + 0.5) * CELL_PX, (p.y + 0.5) * CELL_PX, 3, 0, 2*Math.PI);
+      c.fill();
+    });
+    if (a.label) {
+      const text = a.label;
+      const padding = 4;
+      const metrics = c.measureText(text);
+      const labelW = metrics.width + padding * 2;
+      const labelH = 16;
+      const fx = (a.points[0].x + 0.5) * CELL_PX;
+      const fy = (a.points[0].y + 0.5) * CELL_PX - labelH - 4;
+      c.fillStyle = strokeCol;
+      c.fillRect(fx, fy, labelW, labelH);
+      c.fillStyle = "#000";
+      c.fillText(text, fx + padding, fy + 12);
+    }
+  }
+}
+
+// ── Annotation save / delete / list ────────────────────
+function saveCurrentAsAnnotation() {
+  if (!currentMeasure) {
+    setStatus("저장할 측정 결과가 없습니다");
+    return;
+  }
+  const labelInput = document.getElementById("ann-label");
+  const userLabel = labelInput.value.trim();
+  const id = "ann" + (++annCounter);
+  const color = ANN_COLORS[annotations.length % ANN_COLORS.length];
+
+  let ann;
+  if (measureMode === "rect") {
+    const s = currentMeasure.start, e = currentMeasure.end;
+    ann = {
+      id, type: "rect", color,
+      label: userLabel || `사각영역 ${annCounter}`,
+      x: Math.min(s.x, e.x),
+      y: Math.min(s.y, e.y),
+      w: Math.abs(e.x - s.x) + 1,
+      h: Math.abs(e.y - s.y) + 1,
+    };
+  } else if (measureMode === "circle") {
+    const c = currentMeasure.center, e = currentMeasure.edge;
+    ann = {
+      id, type: "circle", color,
+      label: userLabel || `원영역 ${annCounter}`,
+      cx: c.x, cy: c.y,
+      r: Math.hypot(e.x - c.x, e.y - c.y),
+    };
+  } else if (measureMode === "path") {
+    if (currentMeasure.points.length < 2) {
+      setStatus("경로는 최소 2개 점이 필요합니다");
+      return;
+    }
+    ann = {
+      id, type: "path", color,
+      label: userLabel || `경로 ${annCounter}`,
+      points: currentMeasure.points.map(p => ({ x: p.x, y: p.y })),
+    };
+  }
+  annotations.push(ann);
+  labelInput.value = "";
+  currentMeasure = null;
+  drawAnnotations();
+  drawCursor();
+  updateMeasurePanel();
+  updateAnnotationList();
+  setStatus(`영역 저장: ${ann.label}`);
+}
+
+function deleteAnnotation(id) {
+  annotations = annotations.filter(a => a.id !== id);
+  drawAnnotations();
+  updateAnnotationList();
+}
+
+function clearAllAnnotations() {
+  if (annotations.length === 0) return;
+  if (!confirm(`저장된 영역 ${annotations.length}개를 모두 삭제할까요?`)) return;
+  annotations = [];
+  drawAnnotations();
+  updateAnnotationList();
+  setStatus("모든 영역 삭제됨");
+}
+
+function updateAnnotationList() {
+  const el = document.getElementById("ann-list");
+  if (annotations.length === 0) {
+    el.innerHTML = `<span style="color:#666;font-style:italic;font-size:11px;padding:6px;display:block">아직 저장된 영역 없음</span>`;
+    return;
+  }
+  el.innerHTML = annotations.map(a => {
+    let detail = "";
+    if (a.type === "rect")        detail = `🟦 ${a.w}×${a.h} = ${a.w * a.h}m²`;
+    else if (a.type === "circle") detail = `⭕ r=${a.r.toFixed(1)}m, ${(Math.PI*a.r*a.r).toFixed(0)}m²`;
+    else if (a.type === "path")   detail = `📍 ${a.points.length}점, ${pathLength(a.points).toFixed(1)}m`;
+    return (
+      `<div class="ann-item">
+         <div class="ann-color" style="background:${a.color}"></div>
+         <div class="ann-body">
+           <div class="ann-label">${escapeHTML(a.label)}</div>
+           <div class="ann-detail">${detail}</div>
+         </div>
+         <button data-del-id="${a.id}" title="삭제">✕</button>
+       </div>`
+    );
+  }).join("");
+  // Wire up delete buttons
+  el.querySelectorAll("button[data-del-id]").forEach(btn => {
+    btn.addEventListener("click", () => deleteAnnotation(btn.dataset.delId));
+  });
+}
+
+function escapeHTML(s) {
+  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
 // ═══════════════════════════════════════════════════════
 // Mouse
 // ═══════════════════════════════════════════════════════
 function mouseToCell(e) {
+  // getBoundingClientRect already reflects zoomed CSS size,
+  // so we divide by (zoomed cell size) = CELL_PX * zoom.
   const r = canvas.getBoundingClientRect();
   return {
-    x: Math.floor((e.clientX - r.left) / CELL_PX),
-    y: Math.floor((e.clientY - r.top) / CELL_PX),
+    x: Math.floor((e.clientX - r.left) / (CELL_PX * zoom)),
+    y: Math.floor((e.clientY - r.top) / (CELL_PX * zoom)),
   };
+}
+
+function updateCellInfo(x, y) {
+  const el = document.getElementById("cell-info");
+  if (!el) return;
+  if (!inBounds(x, y)) {
+    el.innerHTML = `<span class="hint" style="color:#666;font-style:italic">캔버스 위로 마우스 이동</span>`;
+    return;
+  }
+  const stack = stackAt(x, y);
+  el.innerHTML =
+    `<div>좌표: (${x}, ${y})</div>` +
+    `<div>월드: (${x}m, ${GRID_H - y - 1}m)</div>` +
+    (stack.length
+       ? `<div style="margin-top:4px;color:#ffc850">${stack.join(" + ")}</div>`
+       : `<div style="margin-top:4px;color:#666">(빈 셀)</div>`);
 }
 
 canvas.addEventListener("mousedown", (e) => {
   e.preventDefault();
   const { x, y } = mouseToCell(e);
   if (!inBounds(x, y)) return;
+
+  if (currentTool === "measure") {
+    if (e.button === 0) {
+      if (measureMode === "rect") {
+        currentMeasure = { start: { x, y }, end: { x, y } };
+        measureActive = true;
+      } else if (measureMode === "circle") {
+        currentMeasure = { center: { x, y }, edge: { x, y } };
+        measureActive = true;
+      } else if (measureMode === "path") {
+        // Each click adds a point; double-click click2 lands on same cell (handled below)
+        if (!currentMeasure) currentMeasure = { points: [{ x, y }] };
+        else currentMeasure.points.push({ x, y });
+        measureActive = false;  // no drag for path
+      }
+      updateMeasurePanel();
+      drawCursor();
+    } else if (e.button === 2) {
+      // Right-click in path mode: remove last point (or clear if only one)
+      if (measureMode === "path" && currentMeasure && currentMeasure.points.length > 0) {
+        currentMeasure.points.pop();
+        if (currentMeasure.points.length === 0) currentMeasure = null;
+        updateMeasurePanel();
+        drawCursor();
+      }
+    }
+    return;  // measure tool consumes all mousedowns (no painting)
+  }
+
   isDrawing = true;
   drawingButton = e.button;
   lastDrawCell = null;
@@ -672,10 +1224,27 @@ canvas.addEventListener("mousemove", (e) => {
     const toolMsg = (currentTool === "eraser" && m) ? ` · 지우개→${m.layer}` : "";
     setStatus(`(${x}, ${y})${toolMsg}${brushMsg}${stackMsg}`);
     hoverCell = { x, y };
+    updateCellInfo(x, y);
   } else {
     hoverCell = null;
+    updateCellInfo(-1, -1);
   }
+
+  // Measure tool: live update during drag (rect/circle) or hover (path)
+  if (currentTool === "measure" && inBounds(x, y)) {
+    if (measureActive && currentMeasure) {
+      if (measureMode === "rect") {
+        currentMeasure.end = { x, y };
+      } else if (measureMode === "circle") {
+        currentMeasure.edge = { x, y };
+      }
+      updateMeasurePanel();
+    }
+    // For path mode, hoverCell already updated above → cursor preview line draws automatically
+  }
+
   drawCursor();
+
   if (!isDrawing) return;
   if (lastDrawCell && lastDrawCell.x === x && lastDrawCell.y === y) return;
   if (!inBounds(x, y)) return;
@@ -686,14 +1255,20 @@ canvas.addEventListener("mousemove", (e) => {
 
 canvas.addEventListener("mouseleave", () => {
   hoverCell = null;
+  updateCellInfo(-1, -1);
   drawCursor();
 });
 
-window.addEventListener("mouseup", () => { isDrawing = false; lastDrawCell = null; });
+window.addEventListener("mouseup", () => {
+  isDrawing = false;
+  lastDrawCell = null;
+  measureActive = false;  // finalize current measurement (keeps last result visible)
+});
 canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
 function performToolAt(x, y, button, isDrag = false) {
   const isRight = button === 2;
+  if (currentTool === "measure") return;  // measure handled in mousedown/move
   if (isRight || currentTool === "eraser") {
     // Eraser scopes to selected module's layer + footprint (or brush for 1×1)
     eraseStamp(x, y, selectedModule, brushSize);
@@ -742,6 +1317,97 @@ function buildPalette() {
     });
   });
 }
+
+// ═══════════════════════════════════════════════════════
+// Zoom (mouse wheel + buttons, cursor-centered)
+// ═══════════════════════════════════════════════════════
+function applyZoom(newZoom, clientX, clientY) {
+  const oldZoom = zoom;
+  const clamped = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, newZoom));
+  if (Math.abs(clamped - oldZoom) < 1e-4) return;
+
+  const wrap = document.getElementById("canvas-wrap");
+  const main = document.getElementById("main");
+
+  // Default zoom point = center of visible main viewport
+  if (clientX === undefined) {
+    const mr = main.getBoundingClientRect();
+    clientX = mr.left + mr.width / 2;
+    clientY = mr.top  + mr.height / 2;
+  }
+
+  // World point under cursor BEFORE zoom (internal 0..1024 coords)
+  const oldRect = wrap.getBoundingClientRect();
+  const worldX = (clientX - oldRect.left) / oldZoom;
+  const worldY = (clientY - oldRect.top)  / oldZoom;
+
+  // Apply new zoom by resizing the wrap (canvases inherit 100% width/height)
+  zoom = clamped;
+  const sizePx = BASE_CANVAS_PX * zoom;
+  wrap.style.width  = sizePx + "px";
+  wrap.style.height = sizePx + "px";
+
+  // Adjust scroll so the same world point stays under the cursor
+  const newRect = wrap.getBoundingClientRect();
+  const dx = (newRect.left + worldX * zoom) - clientX;
+  const dy = (newRect.top  + worldY * zoom) - clientY;
+  main.scrollLeft += dx;
+  main.scrollTop  += dy;
+
+  // Update zoom display
+  const zEl = document.getElementById("zoom-val");
+  if (zEl) zEl.textContent = Math.round(zoom * 100) + "%";
+}
+
+function initCanvasSize() {
+  const wrap = document.getElementById("canvas-wrap");
+  wrap.style.width  = BASE_CANVAS_PX + "px";
+  wrap.style.height = BASE_CANVAS_PX + "px";
+}
+
+// Wheel zooms (prevent page scroll). Mac trackpad delta is smaller; we still
+// step uniformly per event to keep behavior predictable.
+canvas.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  const dir = e.deltaY < 0 ? 1 : -1;
+  applyZoom(zoom + dir * ZOOM_STEP, e.clientX, e.clientY);
+}, { passive: false });
+
+document.getElementById("btn-zoom-in").addEventListener("click", () => applyZoom(zoom + ZOOM_STEP));
+document.getElementById("btn-zoom-out").addEventListener("click", () => applyZoom(zoom - ZOOM_STEP));
+document.getElementById("btn-zoom-reset").addEventListener("click", () => applyZoom(1.0));
+
+// ═══════════════════════════════════════════════════════
+// Measure mode + annotation save/delete
+// ═══════════════════════════════════════════════════════
+document.querySelectorAll(".mode-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    measureMode = btn.dataset.mode;
+    document.querySelectorAll(".mode-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    // Discard in-progress measurement when mode changes
+    currentMeasure = null;
+    measureActive = false;
+    updateMeasurePanel();
+    drawCursor();
+    // Auto-switch tool to measure if not already
+    if (currentTool !== "measure") {
+      document.querySelector(".tool-btn[data-tool='measure']").click();
+    }
+  });
+});
+
+document.getElementById("btn-measure-clear").addEventListener("click", clearMeasure);
+document.getElementById("btn-ann-save").addEventListener("click", saveCurrentAsAnnotation);
+document.getElementById("btn-ann-clear-all").addEventListener("click", clearAllAnnotations);
+
+// Enter key in label input → save annotation
+document.getElementById("ann-label").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    saveCurrentAsAnnotation();
+  }
+});
 
 // ═══════════════════════════════════════════════════════
 // Tool buttons + brush size
@@ -794,6 +1460,8 @@ function exportJSON() {
       footprint: m.footprint, layer: m.layer,
     })),
     placements,
+    // v0.3.1: planning annotations (zones, points, paths) — separate from placements
+    annotations: annotations.map(a => ({ ...a })),
   };
   const json = JSON.stringify(data, null, 2);
   const blob = new Blob([json], { type: "application/json" });
@@ -827,6 +1495,21 @@ function importJSON(text) {
       const z = p.z || 0;
       if (placeModule(modId, p.x, p.y, z)) n++;
     }
+
+    // Load annotations (v0.3.1+); missing field is fine for older JSONs
+    annotations = [];
+    annCounter = 0;
+    if (Array.isArray(data.annotations)) {
+      for (const a of data.annotations) {
+        if (!a || !a.id || !a.type) continue;
+        annotations.push({ ...a });
+        const num = parseInt(String(a.id).replace(/^\D+/, ""), 10);
+        if (!isNaN(num) && num > annCounter) annCounter = num;
+      }
+    }
+    currentMeasure = null;
+    drawAnnotations();
+    updateAnnotationList();
     drawPlacements();
     let msg = `${n}개 배치 불러옴 (v${ver}→v${SCHEMA_VERSION})`;
     if (migrated) msg += ` · ${migrated}개 ID 마이그레이션`;
@@ -949,6 +1632,7 @@ window.addEventListener("keydown", (e) => {
   if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return;
   if (e.key === "[") { e.preventDefault(); setBrushSize(brushSize - 1); }
   if (e.key === "]") { e.preventDefault(); setBrushSize(brushSize + 1); }
+  if (e.key === "0") { e.preventDefault(); applyZoom(1.0); }
 });
 
 function setStatus(msg) { document.getElementById("status").textContent = msg; }
@@ -956,11 +1640,16 @@ function setStatus(msg) { document.getElementById("status").textContent = msg; }
 // ═══════════════════════════════════════════════════════
 // Init
 // ═══════════════════════════════════════════════════════
+initCanvasSize();
 buildPalette();
 drawGrid();
 drawUnderlay();
 drawPlacements();
-setStatus("128×128 그리드 · 좌측 팔레트에서 모듈 선택 후 캔버스에 그리세요");
+drawAnnotations();
+updateMeasurePanel();
+updateAnnotationList();
+updateCellInfo(-1, -1);
+setStatus("128×128 그리드 · 휠로 줌, 좌측 팔레트에서 모듈 선택");
 </script>
 </body>
 </html>
