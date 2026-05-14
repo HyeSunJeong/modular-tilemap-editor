@@ -27,29 +27,43 @@ JSON_PATH = r"C:\path\to\your\tilemap.json"
 #   Naming: [CATEGORY]_[Type]_[Material]
 #   Categories: TRN(Terrain), ELV(Elevation), ENV(Environment), BLD(Building), ZON(Zone — v0.4)
 MODULE_STYLE = {
+    # Territory — thin overlay UNDER base (rendered at z = -0.001 to sit under TRN_)
+    # Material variants — dark of each hue used as the single Blender color
+    "TER_Material_Yellow":{"height": 0.05, "shape_factor": 1.0, "color": (0.918, 0.812, 0.420)},
+    "TER_Material_Red":   {"height": 0.05, "shape_factor": 1.0, "color": (1.000, 0.600, 0.553)},
+    "TER_Material_Blue":  {"height": 0.05, "shape_factor": 1.0, "color": (0.576, 0.745, 1.000)},
+    "TER_Material_Gray":  {"height": 0.05, "shape_factor": 1.0, "color": (0.553, 0.553, 0.553)},
+    "TER_SubLevel":       {"height": 0.05, "shape_factor": 1.0, "color": (0.54, 0.61, 0.69)},
     # Base terrain
     "TRN_Base_Grass":     {"height": 1.0, "shape_factor": 1.0, "color": (0.29, 0.60, 0.29)},
     "TRN_Base_Dirt":      {"height": 0.3, "shape_factor": 1.0, "color": (0.48, 0.35, 0.23)},
     "TRN_Base_Stone":     {"height": 1.0, "shape_factor": 1.0, "color": (0.60, 0.60, 0.60)},
     "TRN_Base_Water":     {"height": 0.2, "shape_factor": 1.0, "color": (0.29, 0.61, 0.81)},
-    # Elevation (multi-cell platforms / slopes — height > base)
-    "ELV_Platform_Stone": {"height": 2.5, "shape_factor": 1.0, "color": (0.35, 0.35, 0.35)},
     # Environment
-    "ENV_Tree_Pine":      {"height": 2.5, "shape_factor": 0.4, "color": (0.05, 0.35, 0.10)},
-    "ENV_Mount_Peak":     {"height": 6.0, "shape_factor": 1.0, "color": (0.27, 0.29, 0.31)},
-    # Buildings
-    "BLD_House_Generic":  {"height": 5.0, "shape_factor": 1.0, "color": (0.67, 0.20, 0.20)},
+    "ENV_Nature_01":      {"height": 2.5, "shape_factor": 1.0, "color": (0.553, 0.667, 0.525)},
+    "ENV_Nature_02":      {"height": 2.5, "shape_factor": 1.0, "color": (0.388, 0.388, 0.388)},
+    # Buildings — three variants
+    "BLD_House_01":       {"height": 5.0, "shape_factor": 1.0, "color": (1.000, 0.404, 0.659)},
+    "BLD_House_02":       {"height": 5.0, "shape_factor": 1.0, "color": (1.000, 0.698, 0.804)},
+    "BLD_House_03":       {"height": 5.0, "shape_factor": 1.0, "color": (0.702, 0.000, 0.722)},
+    # Roads — thin paved strips (fixed x-axis width per module)
+    "ROD_Main":           {"height": 0.05, "shape_factor": 1.0, "color": (0.922, 0.922, 0.922)},
+    "ROD_Sub":            {"height": 0.05, "shape_factor": 1.0, "color": (0.553, 0.553, 0.553)},
+    # Zones — design region markers (thin overlay so they don't clash with real geometry)
+    "ZON_Hunt_Area":      {"height": 0.1, "shape_factor": 1.0, "color": (0.0, 0.0, 0.0)},
 }
 
 # v1 → v2 ID migration (auto-applied at load time so old JSONs still work)
 LEGACY_ID_MAP = {
     "block_1m_grass": "TRN_Base_Grass",
     "block_1m_dirt":  "TRN_Base_Dirt",
-    "block_1m_stone": "TRN_Base_Stone",
-    "block_5m_stone": "ELV_Platform_Stone",
-    "tree":           "ENV_Tree_Pine",
-    "building_3x3":   "BLD_House_Generic",
-    "mountain_5x5":   "ENV_Mount_Peak",
+    "block_1m_stone":    "TRN_Base_Stone",
+    "tree":              "ENV_Nature_01",
+    "ENV_Tree_Pine":     "ENV_Nature_01",
+    "building_3x3":      "BLD_House_01",
+    "BLD_House_Generic": "BLD_House_01",
+    # Pre-multivariant default → loads as yellow
+    "TER_Material":      "TER_Material_Yellow",
 }
 
 # ────────────────────────────────────────────────────────────
@@ -58,15 +72,21 @@ LEGACY_ID_MAP = {
 # Layer is derived from module ID prefix.
 # ────────────────────────────────────────────────────────────
 LAYER_Z_OFFSET = {
+    "territory":  -0.001,   # below base — ground extent markers
     "base":        0.000,   # ground level
     "elevation":   0.001,   # +1 mm above base
     "environment": 0.002,   # +2 mm above base
+    "road":        0.0025,  # roads sit ON environment (slightly above)
+    "zone":        0.003,   # +3 mm — design markers ON TOP of everything
 }
 
 def get_module_layer(module_id):
+    if module_id.startswith("TER_"): return "territory"
     if module_id.startswith("TRN_"): return "base"
     if module_id.startswith("ELV_"): return "elevation"
-    return "environment"   # ENV_, BLD_, ZON_ (future)
+    if module_id.startswith("ROD_"): return "road"
+    if module_id.startswith("ZON_"): return "zone"
+    return "environment"   # ENV_, BLD_
 
 
 def make_cube_mesh(name, fw, fh, sz, shape_factor=1.0):

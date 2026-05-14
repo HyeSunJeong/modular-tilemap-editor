@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>Tilemap Editor — 128×128 (v0.3.1)</title>
+<title>Tilemap Editor — 640×640 (v0.3.1)</title>
 <style>
   * { box-sizing: border-box; }
   body {
@@ -53,6 +53,25 @@
   .palette-name { flex: 1; font-size: 12px; line-height: 1.2; }
   .palette-id { font-size: 10px; color: #777; font-family: monospace; }
   .palette-fp { font-size: 11px; color: #888; }
+  .lock-btn {
+    background: transparent; border: none;
+    cursor: pointer; padding: 1px 4px;
+    font-size: 13px; color: #aaa;
+    border-radius: 3px; line-height: 1;
+  }
+  .lock-btn:hover { background: #2a2a2a; }
+  .brush-presets {
+    display: grid; grid-template-columns: repeat(6, 1fr);
+    gap: 3px; margin: 4px 0;
+  }
+  .brush-preset {
+    padding: 5px 0; background: #252525;
+    border: 1px solid #3a3a3a; color: #ccc;
+    cursor: pointer; border-radius: 3px;
+    font-size: 11px; font-family: inherit;
+  }
+  .brush-preset:hover { background: #303030; }
+  .brush-preset.active { background: #1a3a5a; border-color: #5a9bdc; color: #fff; }
   .tools, .actions { display: flex; flex-direction: column; gap: 4px; }
   .tools { flex-direction: row; }
   .tool-btn, .action-btn {
@@ -86,7 +105,7 @@
   #canvas-wrap {
     position: relative;
     box-shadow: 0 0 0 1px #444, 0 8px 24px rgba(0,0,0,0.4);
-    background: #0a0a0a;
+    background: #262626;
     flex-shrink: 0;
   }
   #canvas-wrap canvas {
@@ -94,10 +113,13 @@
     image-rendering: pixelated;
     width: 100%; height: 100%;
   }
-  #canvas-underlay    { z-index: 1; pointer-events: none; }
-  #canvas-grid        { z-index: 2; pointer-events: none; }
-  #canvas             { z-index: 3; cursor: crosshair; }
-  #canvas-annotations { z-index: 4; pointer-events: none; }
+  /* Underlay (PNG 밑그림) sits ABOVE placements/annotations so the reference
+     image overlays the drawing — use the opacity slider to see through it.
+     Cursor stays topmost so the hover preview is always visible. */
+  #canvas-grid        { z-index: 1; pointer-events: none; }
+  #canvas             { z-index: 2; cursor: crosshair; }
+  #canvas-annotations { z-index: 3; pointer-events: none; }
+  #canvas-underlay    { z-index: 4; pointer-events: none; }
   #canvas-cursor      { z-index: 5; pointer-events: none; }
 
   /* Zoom panel buttons */
@@ -201,16 +223,24 @@
 
   <h2>도구</h2>
   <div class="tools">
-    <button class="tool-btn active" data-tool="pen">펜</button>
-    <button class="tool-btn" data-tool="bucket">채우기</button>
-    <button class="tool-btn" data-tool="eraser">지우개</button>
-    <button class="tool-btn" data-tool="measure">측정</button>
+    <button class="tool-btn active" data-tool="pen">펜 (1)</button>
+    <button class="tool-btn" data-tool="eraser">지우개 (2)</button>
+    <button class="tool-btn" data-tool="measure">측정 (3)</button>
+    <button class="tool-btn" data-tool="select">선택 (4)</button>
   </div>
 
   <h2>브러시 크기 (펜/지우개)</h2>
   <div class="row">
-    <input type="range" id="brush-size" min="1" max="10" value="1" style="flex:1">
-    <span id="brush-val" style="font-family:monospace;font-size:11px;color:#aaa;min-width:36px;text-align:right">1×1</span>
+    <input type="range" id="brush-size" min="1" max="100" value="1" style="flex:1">
+    <span id="brush-val" style="font-family:monospace;font-size:11px;color:#aaa;min-width:50px;text-align:right">1×1</span>
+  </div>
+  <div class="brush-presets">
+    <button class="brush-preset" data-size="1">1</button>
+    <button class="brush-preset" data-size="10">10</button>
+    <button class="brush-preset" data-size="20">20</button>
+    <button class="brush-preset" data-size="30">30</button>
+    <button class="brush-preset" data-size="50">50</button>
+    <button class="brush-preset" data-size="100">100</button>
   </div>
   <div class="info" style="margin-top:-4px">
     <kbd>[</kbd> 작게 / <kbd>]</kbd> 크게 (멀티셀 모듈은 자동 무시)
@@ -246,9 +276,9 @@
 
   <h2>정보</h2>
   <div class="info">
-    그리드: 128 × 128<br>
-    타일: 1m × 1m (총 128m × 128m)<br>
-    굵은선: 64칸마다 (4등분)<br>
+    그리드: 640 × 640<br>
+    타일: 1m × 1m (총 640m × 640m)<br>
+    굵은선: 63칸마다 (Material 정렬)<br>
     좌표: (x=열, y=행), (0,0)=좌상단<br>
     <hr>
     <b style="color:#bbb">레이어 스택</b><br>
@@ -260,6 +290,10 @@
     <hr>
     <kbd>좌클릭</kbd> 칠하기/드래그<br>
     <kbd>우클릭</kbd> 지우개<br>
+    <kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd>/<kbd>4</kbd> 펜/지우개/측정/선택<br>
+    선택(4) + 드래그: 사냥터 공간 선택<br>
+    선택(4) + 그룹 클릭드래그: 그룹 이동<br>
+    <kbd>Ctrl+G</kbd> 그룹화 / 해제 (토글)<br>
     <kbd>Ctrl+Z</kbd>/<kbd>Y</kbd> 되돌리기<br>
     파일을 창에 드래그:<br>
     &nbsp;&nbsp;.json → 맵 로드<br>
@@ -289,6 +323,7 @@
   <div class="info" style="margin-top:6px">
     <kbd>마우스 휠</kbd> 줌 인/아웃<br>
     <kbd>0</kbd> 100% 리셋<br>
+    <kbd>Space</kbd>+드래그 화면 이동<br>
     범위: 50% ~ 400%
   </div>
 
@@ -338,10 +373,10 @@
 // ═══════════════════════════════════════════════════════
 // Config
 // ═══════════════════════════════════════════════════════
-const GRID_W = 128, GRID_H = 128;
-const CELL_PX = 8;
+const GRID_W = 640, GRID_H = 640;   // 5× larger linearly (25× area) — covers 640m × 640m
+const CELL_PX = 4;                  // halved from 8 → canvas is 2560² instead of 5120² (¼ memory, 4× render)
 const TILE_SIZE_M = 1.0;
-const QUADRANT = 64;          // thick grid line every N cells (4등분)
+const QUADRANT = 63;          // thick grid line every N cells — aligned to TER_Material (63×63)
 const SCHEMA_VERSION = 2;
 
 // ── Modules ────────────────────────────────────────────
@@ -349,36 +384,60 @@ const SCHEMA_VERSION = 2;
 // Categories: TRN(Terrain), ELV(Elevation), ENV(Environment), BLD(Building), ZON(Zone — v0.4)
 // Footprint is a data property — NOT in the name (so 3×3 → 5×5 castle keeps same ID)
 const MODULES = [
+  // Territory — ground extent markers, rendered UNDER base terrain.
+  // Snap aligns big stamps to a clean grid. Lock toggle in palette header
+  // protects placements from accidental erase once layout is finalized.
+  // Material variants — all 63×63 checker, light/dark pair per hue. Same-hue
+  // variants let designers tag different territory regions visually.
+  { id: "TER_Material_Yellow", name: "Material 노랑 (63×63)", color: "#FFEAA9", color2: "#EACF6B", pattern: "checker", footprint: [63,63], layer: "territory", snap: 63 },
+  { id: "TER_Material_Red",    name: "Material 빨강 (63×63)", color: "#FFB2AA", color2: "#FF998D", pattern: "checker", footprint: [63,63], layer: "territory", snap: 63 },
+  { id: "TER_Material_Blue",   name: "Material 파랑 (63×63)", color: "#CEDFFF", color2: "#93BEFF", pattern: "checker", footprint: [63,63], layer: "territory", snap: 63 },
+  { id: "TER_Material_Gray",   name: "Material 회색 (63×63)", color: "#BFBFBF", color2: "#8D8D8D", pattern: "checker", footprint: [63,63], layer: "territory", snap: 63 },
+  { id: "TER_SubLevel",        name: "SubLevel (126×126)",    color: "#8a9bb0", footprint: [126,126], layer: "territory", snap: 126 },
   // Base terrain — flat 1×1 ground at z=0
   { id: "TRN_Base_Grass",    name: "잔디",            color: "#4a9a4a", footprint: [1,1], layer: "base" },
   { id: "TRN_Base_Dirt",     name: "흙",              color: "#7a5a3a", footprint: [1,1], layer: "base" },
   { id: "TRN_Base_Stone",    name: "돌바닥",          color: "#9a9a9a", footprint: [1,1], layer: "base" },
   { id: "TRN_Base_Water",    name: "물 (얕은)",       color: "#4a9bce", footprint: [1,1], layer: "base" },
-  // Elevation — multi-cell platforms / slopes (height ≠ 0)
-  { id: "ELV_Platform_Stone", name: "돌 플랫폼 (5×5)", color: "#5a5a5a", footprint: [5,5], layer: "elevation" },
-  // Environment — props on top of base
-  { id: "ENV_Tree_Pine",     name: "나무",            color: "#0e5a1a", footprint: [1,1], layer: "environment" },
-  { id: "ENV_Mount_Peak",    name: "산 (5×5)",        color: "#444a4e", footprint: [5,5], layer: "environment" },
-  // Buildings — man-made
-  { id: "BLD_House_Generic", name: "건물 (3×3)",      color: "#aa3434", footprint: [3,3], layer: "environment" },
+  // Environment — props on top of base. All 1×1 now; use brush size to fill areas.
+  { id: "ENV_Nature_01",     name: "자연물 01",       color: "#8DAA86", footprint: [1,1], layer: "environment" },
+  { id: "ENV_Nature_02",     name: "자연물 02",       color: "#636363", footprint: [1,1], layer: "environment" },
+  // Buildings — man-made (1×1, brush-paintable). Three variants for different building types.
+  { id: "BLD_House_01",      name: "건물 01",         color: "#FF67A8", footprint: [1,1], layer: "environment" },
+  { id: "BLD_House_02",      name: "건물 02",         color: "#FFB2CD", footprint: [1,1], layer: "environment" },
+  { id: "BLD_House_03",      name: "건물 03",         color: "#B300B8", footprint: [1,1], layer: "environment" },
+  // Roads — square tiles representing wider/narrower path segments. Lives
+  // between environment and zone layers so they cover environment but get
+  // visually crossed by hunt-area zones.
+  { id: "ROD_Main",          name: "대로 (8×8)",      color: "#EBEBEB", footprint: [8,8], layer: "road" },
+  { id: "ROD_Sub",           name: "소로 (4×4)",      color: "#8D8D8D", footprint: [4,4], layer: "road" },
+  // Zones — design region markers on the topmost "zone" layer so they sit
+  // ABOVE environment (mountains/buildings) instead of being hidden underneath.
+  { id: "ZON_Hunt_Area",     name: "사냥터 공간 (10×10)", color: "#000000", color2: "#ffffff", pattern: "checker", footprint: [10,10], layer: "zone", snap: 10 },
 ];
 
 // v1 → v2 ID migration
 const LEGACY_ID_MAP = {
   "block_1m_grass": "TRN_Base_Grass",
   "block_1m_dirt":  "TRN_Base_Dirt",
-  "block_1m_stone": "TRN_Base_Stone",
-  "block_5m_stone": "ELV_Platform_Stone",
-  "tree":           "ENV_Tree_Pine",
-  "building_3x3":   "BLD_House_Generic",
-  "mountain_5x5":   "ENV_Mount_Peak",
+  "block_1m_stone":    "TRN_Base_Stone",
+  "tree":              "ENV_Nature_01",       // v1 → renamed-then-renamed
+  "ENV_Tree_Pine":     "ENV_Nature_01",       // v2 → v3 renames
+  "building_3x3":      "BLD_House_01",
+  "BLD_House_Generic": "BLD_House_01",
+  // Pre-multivariant default → defaults to yellow on load
+  "TER_Material":      "TER_Material_Yellow",
 };
 
 // ═══════════════════════════════════════════════════════
 // State
 // ═══════════════════════════════════════════════════════
-// Layer stacking: bottom → top render order
-const LAYERS = ["base", "elevation", "environment"];
+// Layer stacking: bottom → top render order.
+// - territory: ground extent under base terrain (땅 범위)
+// - road: paths/streets above environment but under zone markers
+// - zone: design markers (hunt areas) rendered topmost so they're visible
+//   on top of mountains/buildings/roads.
+const LAYERS = ["territory", "base", "elevation", "environment", "road", "zone"];
 
 function makeEmptyLayers() {
   const o = {};
@@ -407,11 +466,40 @@ let underlayVisible = true;
 let underlayOpacity = 0.5;
 
 // ── Zoom ──────────────────────────────────────────────
-const ZOOM_MIN = 0.5;           // 50%
+const ZOOM_MIN = 0.15;          // 15% — small enough to fit the full 640×640 grid on most screens
 const ZOOM_MAX = 4.0;           // 400%
 const ZOOM_STEP = 0.1;          // 10% per wheel notch
 const BASE_CANVAS_PX = GRID_W * CELL_PX;  // 1024 — internal canvas size, unchanged by zoom
 let zoom = 1.0;
+
+// ── Panning (spacebar + drag) ─────────────────────────
+// Photoshop-style hand tool: hold Space → cursor becomes grab,
+// left-click drag moves the viewport by adjusting #main scroll.
+let isSpaceDown = false;
+let isPanning = false;
+let panStart = null;   // {clientX, clientY, scrollLeft, scrollTop}
+
+// ── Layer locks ───────────────────────────────────────
+// Locked layers reject erase operations (paint still allowed).
+// Used to protect finalized ground-extent placements while detailing on top.
+let territoryLocked = false;
+
+// ── Hunt-area selection + grouping ─────────────────────
+// Shift+drag while ZON_Hunt_Area is selected → rectangular selection.
+// Ctrl+G groups currently selected placements; Ctrl+Backspace ungroups the
+// group under the cursor. Grouped placements can be dragged together.
+let selectionRect = null;          // {x0, y0, x1, y1} while drag is active
+let isSelecting = false;
+let selectedPids = new Set();      // placement ids currently selected (not yet grouped)
+let groupCounter = 0;              // monotonic id for unique group ids
+let groupColors = {};              // gid → color hex string
+const GROUP_COLOR_POOL = ["#ff6b6b","#4ecdc4","#ffd166","#a78bfa","#06d6a0","#ffa07a","#ec4899","#60a5fa"];
+
+// Group drag state — set when mousedown lands on a grouped cell
+let isDraggingGroup = false;
+let dragGroupPids = null;          // array of pids being moved
+let dragGroupStartCell = null;     // {x, y} cell at mousedown
+let dragGroupOrigPositions = null; // pid → {x, y} original positions (so delta math doesn't accumulate)
 
 // ── Measure / Annotation ──────────────────────────────
 // "측정" tool has 3 modes selectable from right panel:
@@ -476,6 +564,8 @@ function snapshot() {
     layers,
     placements: JSON.parse(JSON.stringify(state.placements)),
     counter: placementCounter,
+    groupCounter,
+    groupColors: { ...groupColors },
   };
 }
 function restore(snap) {
@@ -483,6 +573,10 @@ function restore(snap) {
   LAYERS.forEach(L => state.layers[L] = snap.layers[L].map(r => r.slice()));
   state.placements = JSON.parse(JSON.stringify(snap.placements));
   placementCounter = snap.counter;
+  if (snap.groupCounter !== undefined) groupCounter = snap.groupCounter;
+  if (snap.groupColors !== undefined) groupColors = { ...snap.groupColors };
+  // Stale selections after restore are confusing — clear them.
+  selectedPids = new Set();
 }
 function pushUndo() {
   undoStack.push(snapshot());
@@ -551,6 +645,7 @@ function placeCell(moduleId, x, y, z, layer) {
     layer,
     footprint: [1, 1],
     yaw: 0,
+    groupId: null,   // assigned later by Ctrl+G if user groups this placement
   };
   grid[y][x] = pid;
   return true;
@@ -579,6 +674,8 @@ function placeModule(moduleId, x, y, z = 0) {
 // → "what I'm holding paints AND erases the same layer".
 function eraseAt(x, y, layer) {
   if (!inBounds(x, y) || !layer) return;
+  // Safety net — eraseStamp also checks, but other callers shouldn't bypass the lock.
+  if (layer === "territory" && territoryLocked) return;
   const grid = state.layers[layer];
   if (!grid) return;
   const pid = grid[y][x];
@@ -695,22 +792,203 @@ function drawUnderlay() {
 function drawPlacements() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  LAYERS.forEach(L => {
-    const grid = state.layers[L];
-    for (let y = 0; y < GRID_H; y++) {
-      for (let x = 0; x < GRID_W; x++) {
-        const pid = grid[y][x];
-        if (!pid) continue;
-        const p = state.placements[pid];
-        const m = getModule(p.module);
-        if (!m) continue;
-        ctx.fillStyle = m.color;
-        ctx.fillRect(x * CELL_PX, y * CELL_PX, CELL_PX, CELL_PX);
+  // SPARSE iteration — bucket placements by layer to preserve bottom→top draw
+  // order, then iterate only actual placements. This replaces the previous
+  // 640² × N-layer cell scan (2M+ iterations) with O(placements), a huge win
+  // when most of the canvas is empty.
+  const byLayer = {};
+  for (const L of LAYERS) byLayer[L] = [];
+  for (const pid in state.placements) {
+    const p = state.placements[pid];
+    const bucket = byLayer[p.layer];
+    if (bucket) bucket.push(pid);
+  }
+
+  // Per-draw module cache — avoids repeated MODULES.find() lookups for every
+  // placement (e.g. 10k cells × find = expensive).
+  const modCache = {};
+  const getM = (id) => (id in modCache)
+    ? modCache[id]
+    : (modCache[id] = MODULES.find(m => m.id === id) || null);
+
+  for (const L of LAYERS) {
+    const bucket = byLayer[L];
+    for (let i = 0; i < bucket.length; i++) {
+      const pid = bucket[i];
+      const p = state.placements[pid];
+      const m = getM(p.module);
+      if (!m) continue;
+      const x = p.x, y = p.y;
+
+      // Checker pattern fill — per snap-unit parity (zone style) or per-cell.
+      let pColor = m.color;
+      if (m.pattern === "checker" && m.color2) {
+        const parity = (m.snap && m.snap > 1)
+          ? (Math.floor(x / m.snap) + Math.floor(y / m.snap)) % 2
+          : (x + y) % 2;
+        pColor = (parity === 0) ? m.color : m.color2;
+      }
+      ctx.fillStyle = pColor;
+      ctx.fillRect(x * CELL_PX, y * CELL_PX, CELL_PX, CELL_PX);
+
+      // Group / selection outlines — one outline per snap unit, drawn at origin.
+      const snap = (m.snap && m.snap > 1) ? m.snap : 1;
+      const isUnitOrigin = (snap === 1) || (x % snap === 0 && y % snap === 0);
+      if (isUnitOrigin) {
+        const outlinePx = snap * CELL_PX;
+        if (p.groupId && groupColors[p.groupId]) {
+          ctx.strokeStyle = groupColors[p.groupId];
+          ctx.lineWidth = 3;
+          ctx.strokeRect(x * CELL_PX + 1.5, y * CELL_PX + 1.5, outlinePx - 3, outlinePx - 3);
+        }
+        if (selectedPids.has(pid)) {
+          ctx.strokeStyle = "#ffd700";
+          ctx.lineWidth = 2;
+          ctx.setLineDash([6, 4]);
+          ctx.strokeRect(x * CELL_PX + 1, y * CELL_PX + 1, outlinePx - 2, outlinePx - 2);
+          ctx.setLineDash([]);
+        }
       }
     }
+  }
+
+  // Trigger autosave 3 sec after the last redraw (drawPlacements fires on any
+  // paint/erase/group/undo, so this covers nearly every meaningful change).
+  if (typeof scheduleAutosave === "function") scheduleAutosave();
+}
+
+// ═══════════════════════════════════════════════════════
+// Hunt-area grouping — Shift+drag selects zone cells, Ctrl+G groups them,
+// Ctrl+Backspace ungroups the group under the cursor.
+// ═══════════════════════════════════════════════════════
+function groupSelected() {
+  if (selectedPids.size === 0) {
+    setStatus("선택된 사냥터 공간 없음 · 선택 도구(4)로 드래그하세요");
+    return;
+  }
+  pushUndo();
+  groupCounter++;
+  const gid = "g" + groupCounter;
+  groupColors[gid] = GROUP_COLOR_POOL[(groupCounter - 1) % GROUP_COLOR_POOL.length];
+  const zoneGrid = state.layers["zone"];
+  let unitCount = 0;
+  // Each selectedPid is the ORIGIN cell of a zone unit. Propagate groupId to
+  // every cell in that snap×snap unit so the whole zone shares the group.
+  selectedPids.forEach(originPid => {
+    const p = state.placements[originPid];
+    if (!p) return;
+    const m = getModule(p.module);
+    const snap = (m && m.snap) || 1;
+    for (let dy = 0; dy < snap; dy++) {
+      for (let dx = 0; dx < snap; dx++) {
+        const xx = p.x + dx;
+        const yy = p.y + dy;
+        const cellPid = zoneGrid && zoneGrid[yy] && zoneGrid[yy][xx];
+        if (cellPid && state.placements[cellPid]) {
+          state.placements[cellPid].groupId = gid;
+        }
+      }
+    }
+    unitCount++;
   });
-  // Note: per-placement multi-cell border removed — all placements are now per-cell.
-  // The stamp size is shown on the cursor preview instead.
+  selectedPids = new Set();
+  setStatus(`그룹 ${gid} 생성 (${unitCount}개 사냥터 공간)`);
+  drawPlacements();
+}
+
+// Ctrl+G toggle — group selected zones, OR ungroup the group under the cursor
+// if nothing is selected. One key, two intuitive behaviors.
+function groupToggle() {
+  if (selectedPids.size > 0) {
+    groupSelected();
+    return;
+  }
+  if (hoverCell) {
+    ungroupAt(hoverCell.x, hoverCell.y);
+    return;
+  }
+  setStatus("선택 도구(4)로 사냥터 공간을 선택하거나, 그룹 위에 마우스를 두고 Ctrl+G");
+}
+
+function ungroupAt(x, y) {
+  if (!inBounds(x, y)) {
+    setStatus("그룹된 셀 위에서 Ctrl+Backspace를 누르세요");
+    return;
+  }
+  const zoneGrid = state.layers["zone"];
+  const pid = zoneGrid && zoneGrid[y] && zoneGrid[y][x];
+  if (!pid) {
+    setStatus("이 위치에 사냥터 공간이 없습니다");
+    return;
+  }
+  const gid = state.placements[pid] && state.placements[pid].groupId;
+  if (!gid) {
+    setStatus("그룹화되지 않은 셀입니다");
+    return;
+  }
+  pushUndo();
+  let count = 0;
+  Object.keys(state.placements).forEach(p => {
+    if (state.placements[p].groupId === gid) {
+      state.placements[p].groupId = null;
+      count++;
+    }
+  });
+  delete groupColors[gid];
+  setStatus(`그룹 ${gid} 해제 (${count}셀)`);
+  drawPlacements();
+}
+
+// Translate the dragging group by (dx, dy) cells from drag-start. Aborts the
+// move if any destination is out of bounds or occupied by a non-group cell —
+// avoids silently overwriting other groups or unrelated placements.
+function applyGroupTranslate(dx, dy) {
+  if (!dragGroupPids || !dragGroupOrigPositions) return;
+  const zoneGrid = state.layers["zone"];
+  if (!zoneGrid) return;
+  const groupSet = new Set(dragGroupPids);
+
+  // Snap the delta to the group's unit size — zones stay aligned to their
+  // 10×10 boundary so outlines render correctly (which use snap-modulo origin)
+  // and matches the "사냥터 공간 단위로 이동" mental model.
+  const firstP = state.placements[dragGroupPids[0]];
+  const firstM = firstP && getModule(firstP.module);
+  const snap = (firstM && firstM.snap) || 1;
+  if (snap > 1) {
+    dx = Math.round(dx / snap) * snap;
+    dy = Math.round(dy / snap) * snap;
+  }
+
+  // Feasibility pass — abort silently if any target cell is invalid.
+  for (const pid of dragGroupPids) {
+    const orig = dragGroupOrigPositions[pid];
+    const nx = orig.x + dx;
+    const ny = orig.y + dy;
+    if (!inBounds(nx, ny)) return;
+    const occ = zoneGrid[ny][nx];
+    if (occ && !groupSet.has(occ)) return;
+  }
+
+  // Clear current group cells from grid (placements stay alive — only the
+  // grid index moves).
+  dragGroupPids.forEach(pid => {
+    const p = state.placements[pid];
+    if (p && zoneGrid[p.y] && zoneGrid[p.y][p.x] === pid) {
+      zoneGrid[p.y][p.x] = null;
+    }
+  });
+
+  // Stamp at new positions and update placement coords.
+  dragGroupPids.forEach(pid => {
+    const orig = dragGroupOrigPositions[pid];
+    const p = state.placements[pid];
+    if (!p) return;
+    p.x = orig.x + dx;
+    p.y = orig.y + dy;
+    zoneGrid[p.y][p.x] = pid;
+  });
+
+  drawPlacements();
 }
 
 // ═══════════════════════════════════════════════════════
@@ -727,6 +1005,13 @@ function isMultiCell(moduleId) {
 function paintBrush(x, y, moduleId, size) {
   // Multi-cell modules ignore brush — single placement using footprint
   if (isMultiCell(moduleId) || size === 1) {
+    const m = getModule(moduleId);
+    // Modules with `snap` align stamp origin to a fixed grid so adjacent
+    // stamps tile perfectly (e.g. 10×10 zones at (0,0), (10,0), (20,0)…).
+    if (m && m.snap && m.snap > 1) {
+      x = Math.floor(x / m.snap) * m.snap;
+      y = Math.floor(y / m.snap) * m.snap;
+    }
     placeModule(moduleId, x, y);
     return;
   }
@@ -745,7 +1030,17 @@ function eraseStamp(x, y, moduleId, size) {
   const m = getModule(moduleId);
   if (!m) return;
   const L = m.layer;
+  // Layer lock — territory placements are protected. Show feedback once per stamp.
+  if (L === "territory" && territoryLocked) {
+    setStatus("🔒 영토 레이어 잠금 상태 (팔레트 헤더에서 해제)");
+    return;
+  }
   const [fw, fh] = m.footprint;
+  // Mirror paintBrush snap so erase aligns to the same grid as placement.
+  if (m.snap && m.snap > 1) {
+    x = Math.floor(x / m.snap) * m.snap;
+    y = Math.floor(y / m.snap) * m.snap;
+  }
   if (fw > 1 || fh > 1) {
     // Multi-cell: erase footprint area at cursor (top-left)
     for (let dy = 0; dy < fh; dy++)
@@ -764,11 +1059,52 @@ function eraseStamp(x, y, moduleId, size) {
 // ═══════════════════════════════════════════════════════
 // Cursor preview — outline of where the tool will land
 // ═══════════════════════════════════════════════════════
-function drawCursor() {
-  cursorCtx.clearRect(0, 0, cursorCanvas.width, cursorCanvas.height);
+// Track the rectangle the cursor last painted on the cursor canvas so the next
+// call can clearRect just that tiny area instead of the full 5120² canvas.
+// On the 640-grid this is a 10-20× speedup for mousemove.
+let lastCursorBounds = null;   // {x, y, w, h} or null
+let lastCursorTool = null;     // tracks tool to detect mode switches
 
-  // Measure tool has its own overlay (ruler line + bounding box)
+function drawCursor() {
+  // If the tool changed since last draw, the previous mode may have drawn
+  // outside our tracked bounds (notably measure overlay shapes) — full clear
+  // wipes any residue before we draw the new cursor.
+  if (lastCursorTool !== currentTool) {
+    cursorCtx.clearRect(0, 0, cursorCanvas.width, cursorCanvas.height);
+    lastCursorBounds = null;
+    lastCursorTool = currentTool;
+  } else if (lastCursorBounds) {
+    // Same tool — dirty-rect clear of just the previous cursor region
+    // (4 px padding for antialiased strokes).
+    const b = lastCursorBounds;
+    cursorCtx.clearRect(b.x - 2, b.y - 2, b.w + 4, b.h + 4);
+    lastCursorBounds = null;
+  }
+
+  // Shift+drag selection rectangle (live during drag) — replaces normal cursor.
+  // Selection can grow large, so we full-clear and skip bounds tracking.
+  if (isSelecting && selectionRect) {
+    cursorCtx.clearRect(0, 0, cursorCanvas.width, cursorCanvas.height);
+    const r = selectionRect;
+    const sx = Math.min(r.x0, r.x1) * CELL_PX;
+    const sy = Math.min(r.y0, r.y1) * CELL_PX;
+    const ex = (Math.max(r.x0, r.x1) + 1) * CELL_PX;
+    const ey = (Math.max(r.y0, r.y1) + 1) * CELL_PX;
+    cursorCtx.fillStyle   = "rgba(255, 215, 0, 0.15)";
+    cursorCtx.strokeStyle = "#ffd700";
+    cursorCtx.lineWidth   = 2;
+    cursorCtx.setLineDash([6, 4]);
+    cursorCtx.fillRect(sx, sy, ex - sx, ey - sy);
+    cursorCtx.strokeRect(sx + 0.5, sy + 0.5, ex - sx - 1, ey - sy - 1);
+    cursorCtx.setLineDash([]);
+    return;
+  }
+
+  // Measure overlay can draw large shapes (ruler lines, area fills) whose bounds
+  // aren't worth tracking — fall back to a full clear in measure mode. Painting/
+  // eraser flow (the common case) stays cheap.
   if (currentTool === "measure") {
+    cursorCtx.clearRect(0, 0, cursorCanvas.width, cursorCanvas.height);
     drawMeasureOverlay();
     return;
   }
@@ -790,7 +1126,11 @@ function drawCursor() {
     // or brush_size × brush_size (1×1). Shape is identical; only color differs.
     if (isMultiCell(selectedModule)) {
       const m = getModule(selectedModule);
-      rx = x * CELL_PX; ry = y * CELL_PX;
+      // Snap preview origin to match paint/erase behavior — user sees the
+      // exact tile the stamp will land on before clicking.
+      const sx = (m.snap && m.snap > 1) ? Math.floor(x / m.snap) * m.snap : x;
+      const sy = (m.snap && m.snap > 1) ? Math.floor(y / m.snap) * m.snap : y;
+      rx = sx * CELL_PX; ry = sy * CELL_PX;
       rw = m.footprint[0] * CELL_PX; rh = m.footprint[1] * CELL_PX;
     } else {
       const { x0, y0 } = brushBounds(x, y, brushSize);
@@ -802,6 +1142,8 @@ function drawCursor() {
   cursorCtx.strokeStyle = color;
   cursorCtx.lineWidth = 1.5;
   cursorCtx.strokeRect(rx + 0.5, ry + 0.5, rw - 1, rh - 1);
+  // Remember region so next call can dirty-rect clear it.
+  lastCursorBounds = { x: rx, y: ry, w: rw, h: rh };
 }
 
 // ── Measurement overlay — dispatches by mode ───────────
@@ -1062,52 +1404,49 @@ function drawAnnotations() {
 }
 
 function drawSingleAnnotation(c, a, isSelected) {
-  const fillCol = a.color + (isSelected ? "55" : "33");  // selected: brighter fill
+  const fillCol = a.color + (isSelected ? "55" : "33");
   const strokeCol = a.color;
   c.fillStyle = fillCol;
   c.strokeStyle = strokeCol;
   c.lineWidth = isSelected ? 3 : 2;
   if (isSelected) c.setLineDash([6, 4]);
-  c.font = "bold 11px 'Segoe UI', monospace";
+
+  // Label = colored pill ABOVE the shape, large readable font.
+  const LABEL_FONT = 40;
+  const LABEL_H = 56;
+  const LABEL_PAD = 8;
+  c.font = `bold ${LABEL_FONT}px 'Segoe UI', monospace`;
+  c.textAlign = "start";
+  c.textBaseline = "alphabetic";
 
   if (a.type === "rect") {
     const px = a.x * CELL_PX, py = a.y * CELL_PX;
     const pw = a.w * CELL_PX, ph = a.h * CELL_PX;
     c.fillRect(px, py, pw, ph);
     c.strokeRect(px + 0.5, py + 0.5, pw - 1, ph - 1);
-    // Label background pill
     if (a.label) {
-      const text = a.label;
-      const padding = 4;
-      const metrics = c.measureText(text);
-      const labelW = metrics.width + padding * 2;
-      const labelH = 16;
+      const labelW = c.measureText(a.label).width + LABEL_PAD * 2;
       c.fillStyle = strokeCol;
-      c.fillRect(px, py - labelH, labelW, labelH);
+      c.fillRect(px, py - LABEL_H, labelW, LABEL_H);
       c.fillStyle = "#000";
-      c.fillText(text, px + padding, py - 4);
+      c.fillText(a.label, px + LABEL_PAD, py - LABEL_PAD);
     }
   } else if (a.type === "circle") {
     const cx = (a.cx + 0.5) * CELL_PX;
     const cy = (a.cy + 0.5) * CELL_PX;
     const rPx = a.r * CELL_PX;
     c.beginPath(); c.arc(cx, cy, rPx, 0, 2*Math.PI); c.fill(); c.stroke();
-    // Center marker
     c.fillStyle = strokeCol;
     c.beginPath(); c.arc(cx, cy, 3, 0, 2*Math.PI); c.fill();
     if (a.label) {
-      const text = a.label;
-      const padding = 4;
-      const metrics = c.measureText(text);
-      const labelW = metrics.width + padding * 2;
-      const labelH = 16;
+      const labelW = c.measureText(a.label).width + LABEL_PAD * 2;
       c.fillStyle = strokeCol;
-      c.fillRect(cx - labelW / 2, cy - rPx - labelH - 4, labelW, labelH);
+      c.fillRect(cx - labelW / 2, cy - rPx - LABEL_H - 4, labelW, LABEL_H);
       c.fillStyle = "#000";
-      c.fillText(text, cx - labelW / 2 + padding, cy - rPx - 8);
+      c.fillText(a.label, cx - labelW / 2 + LABEL_PAD, cy - rPx - 4 - LABEL_PAD);
     }
   } else if (a.type === "path") {
-    if (a.points.length < 2) return;
+    if (a.points.length < 2) { c.setLineDash([]); return; }
     c.beginPath();
     c.moveTo((a.points[0].x + 0.5) * CELL_PX, (a.points[0].y + 0.5) * CELL_PX);
     for (let i = 1; i < a.points.length; i++) {
@@ -1121,20 +1460,16 @@ function drawSingleAnnotation(c, a, isSelected) {
       c.fill();
     });
     if (a.label) {
-      const text = a.label;
-      const padding = 4;
-      const metrics = c.measureText(text);
-      const labelW = metrics.width + padding * 2;
-      const labelH = 16;
+      const labelW = c.measureText(a.label).width + LABEL_PAD * 2;
       const fx = (a.points[0].x + 0.5) * CELL_PX;
-      const fy = (a.points[0].y + 0.5) * CELL_PX - labelH - 4;
+      const fy = (a.points[0].y + 0.5) * CELL_PX - LABEL_H - 4;
       c.fillStyle = strokeCol;
-      c.fillRect(fx, fy, labelW, labelH);
+      c.fillRect(fx, fy, labelW, LABEL_H);
       c.fillStyle = "#000";
-      c.fillText(text, fx + padding, fy + 12);
+      c.fillText(a.label, fx + LABEL_PAD, fy + LABEL_H - LABEL_PAD);
     }
   }
-  c.setLineDash([]);  // reset so subsequent draws aren't dashed
+  c.setLineDash([]);
 }
 
 // ── Annotation save / delete / list ────────────────────
@@ -1270,8 +1605,69 @@ function updateCellInfo(x, y) {
 
 canvas.addEventListener("mousedown", (e) => {
   e.preventDefault();
+
+  // Pan mode: spacebar held + left click → start drag-to-pan.
+  // Consume the event before painting/measure logic so no drawing occurs.
+  if (isSpaceDown && e.button === 0) {
+    isPanning = true;
+    const mainEl = document.getElementById("main");
+    // Layout has two scroll containers and they don't both scroll on both axes:
+    //   - #main scrolls horizontally when zoomed canvas overflows its flex column
+    //   - window/body scrolls vertically because #main has no fixed height
+    // Decide which container handles each axis at drag-start, then drive that one.
+    const docEl = document.documentElement;
+    const mainScrollX = mainEl.scrollWidth  > mainEl.clientWidth;
+    const mainScrollY = mainEl.scrollHeight > mainEl.clientHeight;
+    const winScrollX  = docEl.scrollWidth   > window.innerWidth;
+    const winScrollY  = docEl.scrollHeight  > window.innerHeight;
+    panStart = {
+      clientX: e.clientX,
+      clientY: e.clientY,
+      mainLeft: mainEl.scrollLeft,
+      mainTop:  mainEl.scrollTop,
+      winX: window.scrollX,
+      winY: window.scrollY,
+      useXmain: mainScrollX,
+      useXwin:  !mainScrollX && winScrollX,
+      useYmain: mainScrollY,
+      useYwin:  !mainScrollY && winScrollY,
+    };
+    canvas.style.cursor = "grabbing";
+    return;
+  }
+
   const { x, y } = mouseToCell(e);
   if (!inBounds(x, y)) return;
+
+  // Select tool — left drag = selection / clicking a grouped zone cell = move group.
+  // All hunt-area editing (selection + group movement) lives on this tool so the
+  // pen tool stays purely for painting.
+  if (currentTool === "select" && e.button === 0) {
+    const zoneGrid = state.layers["zone"];
+    const pidHere = zoneGrid && zoneGrid[y] && zoneGrid[y][x];
+    if (pidHere && state.placements[pidHere] && state.placements[pidHere].groupId) {
+      // Move the whole group
+      const gid = state.placements[pidHere].groupId;
+      const pids = Object.keys(state.placements).filter(p => state.placements[p].groupId === gid);
+      if (pids.length) {
+        pushUndo();
+        isDraggingGroup = true;
+        dragGroupPids = pids;
+        dragGroupStartCell = { x, y };
+        dragGroupOrigPositions = {};
+        pids.forEach(p => {
+          dragGroupOrigPositions[p] = { x: state.placements[p].x, y: state.placements[p].y };
+        });
+        return;
+      }
+    }
+    // Otherwise → rectangle selection
+    isSelecting = true;
+    selectionRect = { x0: x, y0: y, x1: x, y1: y };
+    selectedPids = new Set();
+    drawCursor();
+    return;
+  }
 
   if (currentTool === "measure") {
     if (e.button === 0) {
@@ -1324,7 +1720,33 @@ canvas.addEventListener("mousedown", (e) => {
 });
 
 canvas.addEventListener("mousemove", (e) => {
+  // While panning, window-level mousemove handles scrolling.
+  // Skip painting/measure/hover logic so brushes don't fire mid-pan.
+  if (isPanning) return;
+
   const { x, y } = mouseToCell(e);
+
+  // Selection rectangle in progress — update endpoint, redraw preview, skip paint.
+  if (isSelecting && selectionRect && inBounds(x, y)) {
+    selectionRect.x1 = x;
+    selectionRect.y1 = y;
+    hoverCell = { x, y };
+    updateCellInfo(x, y);
+    drawCursor();
+    return;
+  }
+
+  // Group drag in progress — translate by delta from drag start (uses orig
+  // positions so we don't accumulate float-style drift).
+  if (isDraggingGroup && inBounds(x, y)) {
+    const dx = x - dragGroupStartCell.x;
+    const dy = y - dragGroupStartCell.y;
+    applyGroupTranslate(dx, dy);
+    hoverCell = { x, y };
+    updateCellInfo(x, y);
+    return;
+  }
+
   if (inBounds(x, y)) {
     const stack = stackAt(x, y);
     const brushMsg = (brushSize > 1 && !isMultiCell(selectedModule)) ? ` · 브러시 ${brushSize}×${brushSize}` : "";
@@ -1380,6 +1802,62 @@ canvas.addEventListener("mouseleave", () => {
 });
 
 window.addEventListener("mouseup", () => {
+  if (isPanning) {
+    isPanning = false;
+    panStart = null;
+    // Restore cursor — keep "grab" while spacebar still held, clear otherwise.
+    canvas.style.cursor = isSpaceDown ? "grab" : "";
+  }
+  // Finalize select-drag selection — collect zone UNITS (origin pid per snap-unit)
+  // so each hunt area counts once regardless of how many of its 100 cells fall
+  // inside the rect.
+  if (isSelecting && selectionRect) {
+    const x0 = Math.min(selectionRect.x0, selectionRect.x1);
+    const y0 = Math.min(selectionRect.y0, selectionRect.y1);
+    const x1 = Math.max(selectionRect.x0, selectionRect.x1);
+    const y1 = Math.max(selectionRect.y0, selectionRect.y1);
+    const zoneGrid = state.layers["zone"];
+    selectedPids = new Set();
+    const seenOrigins = new Set();
+    if (zoneGrid) {
+      for (let yy = y0; yy <= y1; yy++) {
+        if (!zoneGrid[yy]) continue;
+        for (let xx = x0; xx <= x1; xx++) {
+          const pid = zoneGrid[yy][xx];
+          if (!pid) continue;
+          const p = state.placements[pid];
+          const m = p && getModule(p.module);
+          const snap = (m && m.snap) || 1;
+          const origX = Math.floor(p.x / snap) * snap;
+          const origY = Math.floor(p.y / snap) * snap;
+          const key = origX + "," + origY;
+          if (seenOrigins.has(key)) continue;
+          seenOrigins.add(key);
+          // FULL containment only — a 15×15 rect over a 10×10 zone does NOT
+          // select it; the rect must cover all 10×10 cells of the zone.
+          if (origX < x0 || origY < y0 ||
+              origX + snap - 1 > x1 || origY + snap - 1 > y1) continue;
+          const originPid = zoneGrid[origY] && zoneGrid[origY][origX];
+          if (originPid) selectedPids.add(originPid);
+        }
+      }
+    }
+    isSelecting = false;
+    selectionRect = null;
+    const n = selectedPids.size;
+    if (n === 0) setStatus("선택된 사냥터 공간 없음");
+    else setStatus(`${n}개 사냥터 공간 선택 · Ctrl+G로 그룹화`);
+    drawPlacements();
+    drawCursor();
+  }
+  // Finalize group drag
+  if (isDraggingGroup) {
+    isDraggingGroup = false;
+    dragGroupPids = null;
+    dragGroupStartCell = null;
+    dragGroupOrigPositions = null;
+    setStatus("그룹 이동 완료");
+  }
   isDrawing = false;
   lastDrawCell = null;
   measureActive = false;  // finalize current measurement (keeps last result visible)
@@ -1389,6 +1867,26 @@ window.addEventListener("mouseup", () => {
     updateAnnotationList();  // refresh list (positions in details may have changed)
   }
 });
+
+// Window-level mousemove handles panning even when cursor leaves the canvas,
+// so fast drags don't lose tracking at the edges. Routes per-axis to whichever
+// container (#main vs window) actually scrolls along that axis.
+window.addEventListener("mousemove", (e) => {
+  if (!isPanning || !panStart) return;
+  const dx = e.clientX - panStart.clientX;
+  const dy = e.clientY - panStart.clientY;
+  if (panStart.useXmain || panStart.useYmain) {
+    const mainEl = document.getElementById("main");
+    if (panStart.useXmain) mainEl.scrollLeft = panStart.mainLeft - dx;
+    if (panStart.useYmain) mainEl.scrollTop  = panStart.mainTop  - dy;
+  }
+  if (panStart.useXwin || panStart.useYwin) {
+    const tx = panStart.useXwin ? (panStart.winX - dx) : window.scrollX;
+    const ty = panStart.useYwin ? (panStart.winY - dy) : window.scrollY;
+    window.scrollTo(tx, ty);
+  }
+});
+
 canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
 function performToolAt(x, y, button, isDrag = false) {
@@ -1410,25 +1908,51 @@ function performToolAt(x, y, button, isDrag = false) {
 function buildPalette() {
   const el = document.getElementById("palette");
   el.innerHTML = "";
-  const order = ["base", "elevation", "environment"];
+  const order = ["territory", "base", "elevation", "environment", "road", "zone"];
   const labels = {
+    territory:   "영토 (TER)",
     base:        "Base 지형 (TRN)",
     elevation:   "Elevation (ELV)",
     environment: "Environment / Building",
+    road:        "Road (도로)",
+    zone:        "Zone (사냥터 공간)",
   };
   order.forEach(layer => {
     const items = MODULES.filter(m => m.layer === layer);
     if (!items.length) return;
     const h = document.createElement("div");
     h.className = "layer-label";
-    h.textContent = labels[layer];
+    if (layer === "territory") {
+      // Territory header carries a lock toggle — protects placements from erase.
+      h.style.display = "flex";
+      h.style.alignItems = "center";
+      h.style.justifyContent = "space-between";
+      h.innerHTML = `<span>${labels[layer]}</span>` +
+        `<button class="lock-btn" id="lock-territory" title="영토 레이어 잠금 (지우개 차단)">` +
+        (territoryLocked ? "🔒" : "🔓") + `</button>`;
+    } else {
+      h.textContent = labels[layer];
+    }
     el.appendChild(h);
+    if (layer === "territory") {
+      const lockBtn = h.querySelector("#lock-territory");
+      lockBtn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        territoryLocked = !territoryLocked;
+        lockBtn.textContent = territoryLocked ? "🔒" : "🔓";
+        setStatus(territoryLocked ? "🔒 영토 레이어 잠금" : "🔓 영토 레이어 잠금 해제");
+      });
+    }
     items.forEach(m => {
       const item = document.createElement("div");
       item.className = "palette-item" + (m.id === selectedModule ? " selected" : "");
       item.dataset.id = m.id;
+      // Checker swatch uses conic-gradient → small 2×2 board preview.
+      const swatchStyle = (m.pattern === "checker" && m.color2)
+        ? `background: conic-gradient(${m.color} 0deg 90deg, ${m.color2} 90deg 180deg, ${m.color} 180deg 270deg, ${m.color2} 270deg)`
+        : `background:${m.color}`;
       item.innerHTML =
-        `<div class="swatch" style="background:${m.color}"></div>` +
+        `<div class="swatch" style="${swatchStyle}"></div>` +
         `<div class="palette-name">${m.name}<div class="palette-id">${m.id}</div></div>` +
         `<div class="palette-fp">${m.footprint[0]}×${m.footprint[1]}</div>`;
       item.addEventListener("click", () => {
@@ -1488,6 +2012,14 @@ function initCanvasSize() {
   const wrap = document.getElementById("canvas-wrap");
   wrap.style.width  = BASE_CANVAS_PX + "px";
   wrap.style.height = BASE_CANVAS_PX + "px";
+  // Sync internal canvas resolution with grid × cell_px (HTML width/height attrs).
+  // Without this, when GRID_W changes the canvas still renders at the original
+  // attribute size and gets stretched.
+  ["canvas-underlay", "canvas-grid", "canvas", "canvas-annotations", "canvas-cursor"].forEach(id => {
+    const c = document.getElementById(id);
+    c.width = BASE_CANVAS_PX;
+    c.height = BASE_CANVAS_PX;
+  });
 }
 
 // Wheel zooms (prevent page scroll). Mac trackpad delta is smaller; we still
@@ -1557,12 +2089,19 @@ document.querySelectorAll(".tool-btn").forEach(btn => {
 const brushSlider = document.getElementById("brush-size");
 const brushVal    = document.getElementById("brush-val");
 function setBrushSize(n) {
-  brushSize = Math.max(1, Math.min(10, n | 0));
+  brushSize = Math.max(1, Math.min(100, n | 0));
   brushSlider.value = brushSize;
   brushVal.textContent = `${brushSize}×${brushSize}`;
+  // Highlight matching preset button (none if no exact match).
+  document.querySelectorAll(".brush-preset").forEach(b => {
+    b.classList.toggle("active", +b.dataset.size === brushSize);
+  });
   drawCursor();
 }
 brushSlider.addEventListener("input", (e) => setBrushSize(+e.target.value));
+document.querySelectorAll(".brush-preset").forEach(btn => {
+  btn.addEventListener("click", () => setBrushSize(+btn.dataset.size));
+});
 
 // ═══════════════════════════════════════════════════════
 // Save / Load JSON (v2 schema)
@@ -1606,6 +2145,44 @@ function exportJSON() {
   a.click();
   URL.revokeObjectURL(url);
   setStatus(`${placements.length}개 배치 저장됨 (v${SCHEMA_VERSION})`);
+}
+
+// ── Auto-save to localStorage ─────────────────────────
+// Saves a JSON snapshot 3 sec after the last edit so accidental tab close /
+// page crash doesn't lose work. On next page load the user is asked to restore.
+const AUTOSAVE_KEY = "tilemapAutosave_v1";
+let autosaveTimer = null;
+
+function serializeStateAsJson() {
+  const placements = Object.values(state.placements).map(p => ({
+    module: p.module, x: p.x, y: p.y, z: p.z || 0,
+    layer: p.layer, footprint: p.footprint, yaw: p.yaw || 0,
+    groupId: p.groupId || null,
+  }));
+  return JSON.stringify({
+    version: SCHEMA_VERSION,
+    size: [GRID_W, GRID_H],
+    tile_size_m: TILE_SIZE_M,
+    coord_system: { origin: "top-left", x_axis: "right", y_axis: "down", z_axis: "up" },
+    placements,
+    annotations: annotations.map(a => ({ ...a })),
+    groupColors: { ...groupColors },
+    autosavedAt: new Date().toISOString(),
+  });
+}
+
+function scheduleAutosave() {
+  if (autosaveTimer) clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(() => {
+    autosaveTimer = null;
+    try {
+      localStorage.setItem(AUTOSAVE_KEY, serializeStateAsJson());
+      const t = new Date().toLocaleTimeString();
+      setStatus(`💾 자동 저장됨 ${t}`);
+    } catch (e) {
+      setStatus(`⚠ 자동 저장 실패 (용량 초과 — 수동 JSON 저장 권장)`);
+    }
+  }, 3000);
 }
 
 function importJSON(text) {
@@ -1757,15 +2334,51 @@ document.getElementById("btn-clear").addEventListener("click", () => {
 });
 
 window.addEventListener("keydown", (e) => {
+  // Spacebar → enable pan mode. Ignored when typing in an input so label
+  // text can contain spaces. preventDefault stops page scroll.
+  if (e.code === "Space") {
+    if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return;
+    e.preventDefault();
+    if (!isSpaceDown) {
+      isSpaceDown = true;
+      if (!isPanning) canvas.style.cursor = "grab";
+    }
+    return;
+  }
   if (e.ctrlKey || e.metaKey) {
     if (e.key === "z" || e.key === "Z") { e.preventDefault(); undo(); }
     if (e.key === "y" || e.key === "Y") { e.preventDefault(); redoFn(); }
+    if (e.key === "g" || e.key === "G") { e.preventDefault(); groupToggle(); }
     return;
   }
   if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return;
   if (e.key === "[") { e.preventDefault(); setBrushSize(brushSize - 1); }
   if (e.key === "]") { e.preventDefault(); setBrushSize(brushSize + 1); }
+  // F2 — rename the currently selected annotation (works only after selecting
+  // one via measure tool's "move" mode).
+  if (e.key === "F2") {
+    if (selectedAnnId !== null) {
+      e.preventDefault();
+      const ann = annotations.find(a => a.id === selectedAnnId);
+      if (ann) {
+        const next = window.prompt("영역 이름:", ann.label || "");
+        if (next !== null) {
+          ann.label = next.trim();
+          drawAnnotations();
+          updateAnnotationList();
+          setStatus(`이름 변경: ${ann.label || "(없음)"}`);
+        }
+      }
+    } else {
+      setStatus("F2 사용: 측정 도구의 이동(✋) 모드에서 영역을 먼저 선택하세요");
+    }
+  }
   if (e.key === "0") { e.preventDefault(); applyZoom(1.0); }
+  // Tool shortcuts — delegate to button click so cursor/panel updates apply.
+  if (e.key === "1") { e.preventDefault(); document.querySelector('.tool-btn[data-tool="pen"]')?.click(); }
+  if (e.key === "2") { e.preventDefault(); document.querySelector('.tool-btn[data-tool="eraser"]')?.click(); }
+  if (e.key === "3") { e.preventDefault(); document.querySelector('.tool-btn[data-tool="measure"]')?.click(); }
+  if (e.key === "4") { e.preventDefault(); document.querySelector('.tool-btn[data-tool="select"]')?.click(); }
   // Move mode shortcuts
   if (currentTool === "measure" && measureMode === "move") {
     if (e.key === "Escape") { e.preventDefault(); deselectAnnotation(); }
@@ -1777,6 +2390,15 @@ window.addEventListener("keydown", (e) => {
         updateMeasurePanel();
       }
     }
+  }
+});
+
+// Spacebar release → exit pan mode (only restore cursor if not mid-drag;
+// mouseup handles cursor reset when a drag is finishing).
+window.addEventListener("keyup", (e) => {
+  if (e.code === "Space") {
+    isSpaceDown = false;
+    if (!isPanning) canvas.style.cursor = "";
   }
 });
 
@@ -1794,7 +2416,20 @@ drawAnnotations();
 updateMeasurePanel();
 updateAnnotationList();
 updateCellInfo(-1, -1);
-setStatus("128×128 그리드 · 휠로 줌, 좌측 팔레트에서 모듈 선택");
+setStatus("640×640 그리드 · 휠로 줌, 좌측 팔레트에서 모듈 선택");
+
+// Offer to restore previous autosaved state (covers tab-close / page-crash)
+setTimeout(() => {
+  try {
+    const saved = localStorage.getItem(AUTOSAVE_KEY);
+    if (!saved) return;
+    const data = JSON.parse(saved);
+    const when = data.autosavedAt ? new Date(data.autosavedAt).toLocaleString() : "이전 작업";
+    if (window.confirm(`자동 저장된 작업이 있습니다 (${when}).\n복원하시겠습니까?\n(취소하면 자동 저장 데이터가 유지되며 새 작업으로 덮어씌워집니다)`)) {
+      importJSON(saved);
+    }
+  } catch (e) { /* corrupt autosave — ignore */ }
+}, 200);
 </script>
 </body>
 </html>
