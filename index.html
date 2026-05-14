@@ -356,7 +356,7 @@
     <kbd>사각</kbd>: 영역 크기·면적 (몬스터존, 보스존)<br>
     <kbd>원</kbd>: 반경·둘레 (NPC 시선, 스킬 범위)<br>
     <kbd>경로</kbd>: 클릭 누적, 총 거리·이동시간<br>
-    이동속도: 1.4 m/s (걷기 기준)
+    이동속도: 4.2 m/s (PC 기준 · 420 cm/sec)
   </div>
 
   <h2>현재 셀</h2>
@@ -508,7 +508,7 @@ let dragGroupOrigPositions = null; // pid → {x, y} original positions (so delt
 //   path   — click-to-add points, segment + total distance
 // Each measurement can be saved as an annotation (persistent overlay).
 const ANN_COLORS = ["#ff6b6b","#4ecdc4","#ffd166","#a78bfa","#06d6a0","#ffa07a","#ec4899","#60a5fa"];
-const WALK_SPEED_MPS = 1.4;  // walking speed for path ETA
+const WALK_SPEED_MPS = 4.2;  // PC walking speed: 420 cm/sec → 4.2 m/sec
 
 let measureMode = "rect";    // "rect" | "circle" | "path" | "move"
 let currentMeasure = null;   // shape-specific data; null when idle
