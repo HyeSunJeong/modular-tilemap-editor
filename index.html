@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>Tilemap Editor — 640×640 (v0.3.1)</title>
+<title>Tilemap Editor — 630×630 (v0.4.2)</title>
 <style>
   * { box-sizing: border-box; }
   body {
@@ -285,6 +285,10 @@
       <label for="img-toggle" style="flex:1;cursor:pointer">표시</label>
     </div>
     <div class="row">
+      <input type="checkbox" id="img-align-top">
+      <label for="img-align-top" style="flex:1;cursor:pointer" title="ON: 캔버스 상단에 정렬 / OFF: 중앙 정렬">상단 정렬</label>
+    </div>
+    <div class="row">
       <span style="font-size:11px;color:#aaa">투명도</span>
       <input type="range" id="img-opacity" min="0" max="100" value="50">
       <span id="opacity-val">50%</span>
@@ -300,8 +304,8 @@
 
   <h2>정보</h2>
   <div class="info">
-    그리드: 640 × 640<br>
-    타일: 1m × 1m (총 640m × 640m)<br>
+    그리드: 630 × 630<br>
+    타일: 1m × 1m (총 630m × 630m)<br>
     굵은선: 63칸마다 (Material 정렬)<br>
     좌표: (x=열, y=행), (0,0)=좌상단<br>
     <hr>
@@ -315,6 +319,9 @@
     <hr>
     <kbd>좌클릭</kbd> 칠하기/드래그<br>
     <kbd>우클릭</kbd> 지우개<br>
+    <kbd>Shift</kbd>+드래그 8방향 직선 (가로/세로/대각선)<br>
+    <kbd>Alt</kbd>+클릭 스포이드 (모듈 빠른 선택)<br>
+    <kbd>Ctrl+S</kbd> 저장 (첫 사용 시 경로 지정)<br>
     <kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd>/<kbd>4</kbd>/<kbd>5</kbd> 펜/지우개/측정/선택/전체지우개<br>
     선택(4) + 드래그: 사냥터 공간 선택<br>
     선택(4) + 그룹 클릭드래그: 그룹 이동<br>
@@ -404,7 +411,7 @@
 // ═══════════════════════════════════════════════════════
 // Config
 // ═══════════════════════════════════════════════════════
-const GRID_W = 640, GRID_H = 640;   // 5× larger linearly (25× area) — covers 640m × 640m
+const GRID_W = 630, GRID_H = 630;   // 630×630 (= 10 × QUADRANT 63) covers 630m × 630m
 const CELL_PX = 4;                  // halved from 8 → canvas is 2560² instead of 5120² (¼ memory, 4× render)
 const TILE_SIZE_M = 1.0;
 const QUADRANT = 63;          // thick grid line every N cells — aligned to TER_Material (63×63)
@@ -487,6 +494,24 @@ let brushSize = 1;             // N×N for pen/eraser when module is 1×1
 let isDrawing = false;
 let drawingButton = 0;
 let lastDrawCell = null;
+
+// ── Shift+drag line-mode state (Photoshop-style rubber-band) ──
+// Anchor = last cell where a stroke landed; Shift+click extends a line
+// from there to the click point. Mouse drag while held updates the
+// preview; release commits via Bresenham fill into performToolAt.
+let isLineMode    = false;
+let lineStart     = null;        // {x, y} anchor (= previous paint endpoint)
+let lineEnd       = null;        // {x, y} live cursor cell
+let lineButton    = 0;
+let lastPaintAnchor = null;      // {x, y} updated after every successful paint
+
+// ── Alt-key eyedropper (Photoshop-style) ──
+// While Alt is held the canvas cursor flips to an eyedropper icon and
+// the next click picks the topmost module under the cursor instead of
+// painting. No drag mode — single click selects + returns.
+let isAltDown = false;
+const EYEDROPPER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22"><path d="M3 19l2.5-.5L16 8l-3-3L2.5 15.5 3 19z" fill="black" stroke="white" stroke-width="1.5"/></svg>`;
+const EYEDROPPER_CURSOR = `url("data:image/svg+xml;base64,${btoa(EYEDROPPER_SVG)}") 3 19, crosshair`;
 let undoStack = [];
 let redoStack = [];
 let placementCounter = 0;
@@ -496,12 +521,13 @@ let hoverCell = null;          // {x,y} or null — for cursor preview
 let underlayImage = null;
 let underlayVisible = true;
 let underlayOpacity = 0.5;
+let underlayAlignTop = false;  // false = vertically centered, true = pinned to top edge
 
 // ── Zoom ──────────────────────────────────────────────
-const ZOOM_MIN = 0.15;          // 15% — small enough to fit the full 640×640 grid on most screens
+const ZOOM_MIN = 0.15;          // 15% — small enough to fit the full 630×630 grid on most screens
 const ZOOM_MAX = 4.0;           // 400%
 const ZOOM_STEP = 0.1;          // 10% per wheel notch
-const BASE_CANVAS_PX = GRID_W * CELL_PX;  // 1024 — internal canvas size, unchanged by zoom
+const BASE_CANVAS_PX = GRID_W * CELL_PX;  // 2520 (630*4) — internal canvas size, unchanged by zoom
 let zoom = 1.0;
 
 // ── Panning (spacebar + drag) ─────────────────────────
@@ -824,7 +850,10 @@ function drawUnderlay() {
   // Fit preserving aspect ratio
   const scale = Math.min(cw / iw, ch / ih);
   const dw = iw * scale, dh = ih * scale;
-  const dx = (cw - dw) / 2, dy = (ch - dh) / 2;
+  // X stays centered; Y can be pinned to top (dy=0) so the image hugs the top
+  // edge — useful when the reference screenshot's relevant content is at the top.
+  const dx = (cw - dw) / 2;
+  const dy = underlayAlignTop ? 0 : (ch - dh) / 2;
 
   underlayCtx.imageSmoothingEnabled = false; // nearest-neighbor for pixel-perfect 128px PNG
   underlayCtx.globalAlpha = underlayOpacity;
@@ -840,7 +869,7 @@ function drawPlacements() {
 
   // SPARSE iteration — bucket placements by layer to preserve bottom→top draw
   // order, then iterate only actual placements. This replaces the previous
-  // 640² × N-layer cell scan (2M+ iterations) with O(placements), a huge win
+  // 630² × N-layer cell scan (2M+ iterations) with O(placements), a huge win
   // when most of the canvas is empty.
   const byLayer = {};
   for (const L of LAYERS) byLayer[L] = [];
@@ -1123,7 +1152,7 @@ function eraseAllAt(x, y, size) {
 // ═══════════════════════════════════════════════════════
 // Track the rectangle the cursor last painted on the cursor canvas so the next
 // call can clearRect just that tiny area instead of the full 5120² canvas.
-// On the 640-grid this is a 10-20× speedup for mousemove.
+// On the 630-grid this is a 10-20× speedup for mousemove.
 let lastCursorBounds = null;   // {x, y, w, h} or null
 let lastCursorTool = null;     // tracks tool to detect mode switches
 
@@ -1141,6 +1170,33 @@ function drawCursor() {
     const b = lastCursorBounds;
     cursorCtx.clearRect(b.x - 2, b.y - 2, b.w + 4, b.h + 4);
     lastCursorBounds = null;
+  }
+
+  // ── Shift+drag straight-line preview (rubber-band) ──
+  // Full clear because the line can span the whole canvas; bounds-tracking
+  // wouldn't be worth the bookkeeping.
+  if (isLineMode && lineStart && lineEnd) {
+    cursorCtx.clearRect(0, 0, cursorCanvas.width, cursorCanvas.height);
+    const isEraserLine = (currentTool === "eraser") ||
+                         (currentTool === "eraseAll") ||
+                         (lineButton === 2);
+    cursorCtx.strokeStyle = isEraserLine ? "rgba(255,90,90,0.95)" : "rgba(255,255,255,0.95)";
+    cursorCtx.lineWidth = 2;
+    cursorCtx.setLineDash([6, 4]);
+    cursorCtx.beginPath();
+    cursorCtx.moveTo((lineStart.x + 0.5) * CELL_PX, (lineStart.y + 0.5) * CELL_PX);
+    cursorCtx.lineTo((lineEnd.x   + 0.5) * CELL_PX, (lineEnd.y   + 0.5) * CELL_PX);
+    cursorCtx.stroke();
+    cursorCtx.setLineDash([]);
+    // Endpoint dots so users see exactly where it'll start and end.
+    cursorCtx.fillStyle = cursorCtx.strokeStyle;
+    cursorCtx.beginPath();
+    cursorCtx.arc((lineStart.x + 0.5) * CELL_PX, (lineStart.y + 0.5) * CELL_PX, 3.5, 0, 2*Math.PI);
+    cursorCtx.fill();
+    cursorCtx.beginPath();
+    cursorCtx.arc((lineEnd.x + 0.5) * CELL_PX, (lineEnd.y + 0.5) * CELL_PX, 3.5, 0, 2*Math.PI);
+    cursorCtx.fill();
+    return;
   }
 
   // Shift+drag selection rectangle (live during drag) — replaces normal cursor.
@@ -1703,6 +1759,33 @@ canvas.addEventListener("mousedown", (e) => {
   const { x, y } = mouseToCell(e);
   if (!inBounds(x, y)) return;
 
+  // ── Alt+click eyedropper (highest priority — consumes any click) ──
+  // Works regardless of tool/button so users can sample mid-paint.
+  if (e.altKey && !e.shiftKey) {
+    const picked = pickModuleAt(x, y);
+    if (picked) {
+      const m = getModule(picked);
+      setSelectedModuleById(picked, `🩹 스포이드: ${m ? m.name : picked}`);
+    } else {
+      setStatus("스포이드: 비어있는 셀");
+    }
+    return;
+  }
+
+  // ── Shift+drag → 8-way constrained straight line (Photoshop-style) ──
+  // Mouse-down with Shift held starts a line drag from THIS cell. While
+  // dragging, the end point snaps to horizontal / vertical / 45° diagonal
+  // depending on cursor direction. Release commits via Bresenham.
+  if (e.shiftKey && currentTool !== "measure" && currentTool !== "select") {
+    pushUndo();
+    isLineMode = true;
+    lineButton = e.button;
+    lineStart  = { x, y };
+    lineEnd    = { x, y };
+    drawCursor();
+    return;
+  }
+
   // Select tool — left drag = selection / clicking a grouped zone cell = move group.
   // All hunt-area editing (selection + group movement) lives on this tool so the
   // pen tool stays purely for painting.
@@ -1780,6 +1863,7 @@ canvas.addEventListener("mousedown", (e) => {
   pushUndo();
   performToolAt(x, y, e.button);
   lastDrawCell = { x, y };
+  lastPaintAnchor = { x, y };   // Shift-line uses this as its start point
   drawPlacements();
 });
 
@@ -1855,6 +1939,16 @@ canvas.addEventListener("mousemove", (e) => {
     // For path mode, hoverCell already updated above → cursor preview line draws automatically
   }
 
+  // Live update of Shift+drag line preview — cursor → 8-way snapped end point.
+  if (isLineMode) {
+    const snapped = snapTo8Way(lineStart.x, lineStart.y, x, y);
+    if (!lineEnd || lineEnd.x !== snapped.x || lineEnd.y !== snapped.y) {
+      lineEnd = snapped;
+      drawCursor();
+    }
+    return;
+  }
+
   drawCursor();
 
   if (!isDrawing) return;
@@ -1862,6 +1956,7 @@ canvas.addEventListener("mousemove", (e) => {
   if (!inBounds(x, y)) return;
   performToolAt(x, y, drawingButton, true);
   lastDrawCell = { x, y };
+  lastPaintAnchor = { x, y };   // keep anchor at most recent painted cell
   drawPlacements();
 });
 
@@ -1928,6 +2023,21 @@ window.addEventListener("mouseup", () => {
     dragGroupOrigPositions = null;
     setStatus("그룹 이동 완료");
   }
+  // Commit Shift+drag line — Bresenham-walk from anchor to release point.
+  // Each cell hits performToolAt with isDrag=true so the tool's per-cell
+  // logic (paint stamp / eraser / eraseAll) runs identically to free drag.
+  if (isLineMode && lineStart && lineEnd) {
+    forEachLineCell(lineStart.x, lineStart.y, lineEnd.x, lineEnd.y, (cx, cy) => {
+      if (inBounds(cx, cy)) performToolAt(cx, cy, lineButton, true);
+    });
+    lastPaintAnchor = { x: lineEnd.x, y: lineEnd.y };
+    drawPlacements();
+    drawCursor();
+  }
+  isLineMode = false;
+  lineStart  = null;
+  lineEnd    = null;
+
   isDrawing = false;
   lastDrawCell = null;
   measureActive = false;  // finalize current measurement (keeps last result visible)
@@ -1958,6 +2068,80 @@ window.addEventListener("mousemove", (e) => {
 });
 
 canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+
+// Snap an end-point to the nearest 8-way direction from (sx, sy) so a
+// Shift-drag draws a perfectly horizontal / vertical / 45° diagonal line.
+// The 2× ratio threshold mirrors Photoshop's feel: a clear vertical drag
+// must be more than 2× taller than wide to commit to "vertical", otherwise
+// it snaps to the nearest diagonal.
+function snapTo8Way(sx, sy, ex, ey) {
+  const dx = ex - sx, dy = ey - sy;
+  const absDx = Math.abs(dx), absDy = Math.abs(dy);
+  if (absDx === 0 && absDy === 0) return { x: sx, y: sy };
+  if (absDx > 2 * absDy) return { x: ex, y: sy };          // horizontal
+  if (absDy > 2 * absDx) return { x: sx, y: ey };          // vertical
+  const d = Math.max(absDx, absDy);                        // diagonal
+  return {
+    x: sx + Math.sign(dx) * d,
+    y: sy + Math.sign(dy) * d,
+  };
+}
+
+// Bresenham line — walks every cell on the integer line from (x0,y0) to
+// (x1,y1) inclusive, calling cb(x, y) once per cell. Used by Shift+drag
+// to stamp the tool along a straight line.
+function forEachLineCell(x0, y0, x1, y1, cb) {
+  const dx = Math.abs(x1 - x0);
+  const dy = Math.abs(y1 - y0);
+  const sx = x0 < x1 ? 1 : -1;
+  const sy = y0 < y1 ? 1 : -1;
+  let err = dx - dy;
+  let x = x0, y = y0;
+  // Safety bound — guard against runaway loops if inputs are insane.
+  let safety = 100000;
+  while (safety-- > 0) {
+    cb(x, y);
+    if (x === x1 && y === y1) break;
+    const e2 = 2 * err;
+    if (e2 > -dy) { err -= dy; x += sx; }
+    if (e2 <  dx) { err += dx; y += sy; }
+  }
+}
+
+// Eyedropper — pick the topmost module under (x, y) by walking layers
+// top-down (zone → road → environment → elevation → base → territory).
+function pickModuleAt(x, y) {
+  if (!inBounds(x, y)) return null;
+  for (let i = LAYERS.length - 1; i >= 0; i--) {
+    const L = LAYERS[i];
+    const grid = state.layers[L];
+    const pid = grid && grid[y] && grid[y][x];
+    if (pid && state.placements[pid]) return state.placements[pid].module;
+  }
+  return null;
+}
+
+// Select a module by id and sync the palette UI (handles both grouped
+// .swatch-mini items and standalone .palette-item rows).
+function setSelectedModuleById(id, statusMsg) {
+  selectedModule = id;
+  document.querySelectorAll(".swatch-mini.selected").forEach(e => e.classList.remove("selected"));
+  document.querySelectorAll(".palette-item.selected").forEach(e => e.classList.remove("selected"));
+  const sw = document.querySelector(`.swatch-mini[data-id="${id}"]`);
+  if (sw) sw.classList.add("selected");
+  const it = document.querySelector(`.palette-item[data-id="${id}"]`);
+  if (it) it.classList.add("selected");
+  if (statusMsg) setStatus(statusMsg);
+  drawCursor();
+}
+
+// Swap canvas cursor to eyedropper while Alt is held — affordance signals
+// "click to pick" before the click happens, matching Photoshop's behavior.
+function applyModifierCursor() {
+  if (isAltDown && !isSpaceDown) canvas.style.cursor = EYEDROPPER_CURSOR;
+  else if (isSpaceDown) canvas.style.cursor = isPanning ? "grabbing" : "grab";
+  else canvas.style.cursor = "";
+}
 
 function performToolAt(x, y, button, isDrag = false) {
   const isRight = button === 2;
@@ -2258,7 +2442,9 @@ document.querySelectorAll(".brush-preset").forEach(btn => {
 // ═══════════════════════════════════════════════════════
 // Save / Load JSON (v2 schema)
 // ═══════════════════════════════════════════════════════
-function exportJSON() {
+// Build the full v2 tilemap JSON (placements + annotations + metadata).
+// Shared by exportJSON (download) and quickSaveJson (File System Access API).
+function buildTilemapJson() {
   // Sort by layer (bottom→top), then z, then y, then x
   const layerRank = Object.fromEntries(LAYERS.map((L, i) => [L, i]));
   const placements = Object.values(state.placements)
@@ -2287,7 +2473,12 @@ function exportJSON() {
     // v0.3.1: planning annotations (zones, points, paths) — separate from placements
     annotations: annotations.map(a => ({ ...a })),
   };
-  const json = JSON.stringify(data, null, 2);
+  return { json: JSON.stringify(data, null, 2), count: placements.length };
+}
+
+// "JSON 저장" button — always a fresh timestamped download (a clean snapshot).
+function exportJSON() {
+  const { json, count } = buildTilemapJson();
   const blob = new Blob([json], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -2296,7 +2487,54 @@ function exportJSON() {
   a.download = `tilemap_${ts}.json`;
   a.click();
   URL.revokeObjectURL(url);
-  setStatus(`${placements.length}개 배치 저장됨 (v${SCHEMA_VERSION})`);
+  setStatus(`${count}개 배치 저장됨 (v${SCHEMA_VERSION})`);
+}
+
+// Ctrl+S — remembers a file handle so repeated saves go to the same location
+// without nagging the picker. First press shows the OS save dialog (File
+// System Access API); subsequent presses overwrite that file directly.
+// Falls back to legacy blob-download if the API is unavailable (Safari/FF).
+let saveFileHandle = null;
+async function quickSaveJson() {
+  const { json, count } = buildTilemapJson();
+
+  if (typeof window.showSaveFilePicker === "function") {
+    try {
+      if (!saveFileHandle) {
+        // First-time prompt — let user pick where to save.
+        saveFileHandle = await window.showSaveFilePicker({
+          suggestedName: `tilemap_${new Date().toISOString().slice(0,10)}.json`,
+          types: [{
+            description: "Tilemap JSON",
+            accept: { "application/json": [".json"] },
+          }],
+        });
+      }
+      // Re-verify write permission (Chrome may revoke after some time).
+      if ((await saveFileHandle.queryPermission({ mode: "write" })) !== "granted") {
+        if ((await saveFileHandle.requestPermission({ mode: "write" })) !== "granted") {
+          setStatus("저장 권한 거부됨");
+          return;
+        }
+      }
+      const writable = await saveFileHandle.createWritable();
+      await writable.write(json);
+      await writable.close();
+      setStatus(`💾 ${saveFileHandle.name} (${count}개 배치)`);
+      return;
+    } catch (err) {
+      if (err && err.name === "AbortError") {
+        setStatus("저장 취소됨");
+        return;
+      }
+      // Picker failure or permission error → drop the handle and fall through
+      // to the legacy download so the user still gets their file out.
+      console.warn("showSaveFilePicker failed, falling back to download:", err);
+      saveFileHandle = null;
+    }
+  }
+  // Fallback path — same as the legacy export button.
+  exportJSON();
 }
 
 // ── Auto-save to localStorage ─────────────────────────
@@ -2424,6 +2662,11 @@ document.getElementById("img-toggle").addEventListener("change", (e) => {
   underlayVisible = e.target.checked;
   drawUnderlay();
 });
+document.getElementById("img-align-top").addEventListener("change", (e) => {
+  underlayAlignTop = e.target.checked;
+  drawUnderlay();
+  setStatus(underlayAlignTop ? "📌 밑그림 상단 정렬" : "📌 밑그림 중앙 정렬");
+});
 document.getElementById("img-opacity").addEventListener("input", (e) => {
   underlayOpacity = e.target.value / 100;
   document.getElementById("opacity-val").textContent = e.target.value + "%";
@@ -2486,6 +2729,14 @@ document.getElementById("btn-clear").addEventListener("click", () => {
 });
 
 window.addEventListener("keydown", (e) => {
+  // Track Alt for eyedropper affordance (cursor icon swap). preventDefault
+  // is NOT used here because Alt alone is benign and browsers may need it.
+  if (e.key === "Alt") {
+    if (!isAltDown) {
+      isAltDown = true;
+      applyModifierCursor();
+    }
+  }
   // Spacebar → enable pan mode. Ignored when typing in an input so label
   // text can contain spaces. preventDefault stops page scroll.
   if (e.code === "Space") {
@@ -2498,6 +2749,10 @@ window.addEventListener("keydown", (e) => {
     return;
   }
   if (e.ctrlKey || e.metaKey) {
+    // Ctrl+S — quick save. First press shows OS file picker (path choice);
+    // subsequent presses overwrite that same file silently. Browser's
+    // "Save Page As" dialog is suppressed via preventDefault.
+    if (e.key === "s" || e.key === "S") { e.preventDefault(); quickSaveJson(); }
     if (e.key === "z" || e.key === "Z") { e.preventDefault(); undo(); }
     if (e.key === "y" || e.key === "Y") { e.preventDefault(); redoFn(); }
     if (e.key === "g" || e.key === "G") { e.preventDefault(); groupToggle(); }
@@ -2553,6 +2808,20 @@ window.addEventListener("keyup", (e) => {
     isSpaceDown = false;
     if (!isPanning) canvas.style.cursor = "";
   }
+  // Drop eyedropper icon when Alt is released.
+  if (e.key === "Alt") {
+    isAltDown = false;
+    applyModifierCursor();
+  }
+});
+
+// Edge case — window loses focus while Alt is held (alt-tab away).
+// keyup never fires, so reset on blur to prevent a stuck eyedropper cursor.
+window.addEventListener("blur", () => {
+  if (isAltDown) {
+    isAltDown = false;
+    applyModifierCursor();
+  }
 });
 
 function setStatus(msg) { document.getElementById("status").textContent = msg; }
@@ -2569,7 +2838,7 @@ drawAnnotations();
 updateMeasurePanel();
 updateAnnotationList();
 updateCellInfo(-1, -1);
-setStatus("640×640 그리드 · 휠로 줌, 좌측 팔레트에서 모듈 선택");
+setStatus("630×630 그리드 · 휠로 줌, 좌측 팔레트에서 모듈 선택");
 
 // Offer to restore previous autosaved state (covers tab-close / page-crash)
 setTimeout(() => {
