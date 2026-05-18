@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>Tilemap Editor — 630×630 (v0.4.2)</title>
+<title>Tilemap Editor — 630×630 (v0.4.3)</title>
 <style>
   * { box-sizing: border-box; }
   body {
@@ -319,7 +319,7 @@
     <hr>
     <kbd>좌클릭</kbd> 칠하기/드래그<br>
     <kbd>우클릭</kbd> 지우개<br>
-    <kbd>Shift</kbd>+드래그 8방향 직선 (가로/세로/대각선)<br>
+    <kbd>Shift</kbd>+좌클릭+드래그 직선 (가로/세로)<br>
     <kbd>Alt</kbd>+클릭 스포이드 (모듈 빠른 선택)<br>
     <kbd>Ctrl+S</kbd> 저장 (첫 사용 시 경로 지정)<br>
     <kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd>/<kbd>4</kbd>/<kbd>5</kbd> 펜/지우개/측정/선택/전체지우개<br>
@@ -453,6 +453,9 @@ const MODULES = [
   { id: "ZON_Hunt_Area",     name: "사냥터 공간 (10×10)", color: "#000000", color2: "#ffffff", pattern: "checker", footprint: [10,10], layer: "zone", snap: 10 },
 ];
 
+// O(1) module lookup — built once from the MODULES array.
+const MODULE_MAP = new Map(MODULES.map(m => [m.id, m]));
+
 // v1 → v2 ID migration
 const LEGACY_ID_MAP = {
   "block_1m_grass": "TRN_Base_Grass",
@@ -495,15 +498,35 @@ let isDrawing = false;
 let drawingButton = 0;
 let lastDrawCell = null;
 
-// ── Shift+drag line-mode state (Photoshop-style rubber-band) ──
-// Anchor = last cell where a stroke landed; Shift+click extends a line
-// from there to the click point. Mouse drag while held updates the
-// preview; release commits via Bresenham fill into performToolAt.
+// ── Shift+drag line-mode state ──
+// Line mode can be entered EITHER by holding Shift at mousedown OR by
+// pressing Shift mid-drag. Whichever way, lineStart is the cell where the
+// drag started (dragStartCell). Release commits via Bresenham fill.
 let isLineMode    = false;
-let lineStart     = null;        // {x, y} anchor (= previous paint endpoint)
-let lineEnd       = null;        // {x, y} live cursor cell
+let lineStart     = null;        // {x, y} = dragStartCell when line mode enters
+let lineEnd       = null;        // {x, y} snapped 4-way (H or V) preview end
 let lineButton    = 0;
-let lastPaintAnchor = null;      // {x, y} updated after every successful paint
+let dragStartCell = null;        // {x, y} captured at mousedown, used as line start
+let lastPaintAnchor = null;      // {x, y} updated after every successful paint (unused by line mode now, kept for future use)
+// Live preview snapshot — taken when line mode begins; restored on each
+// mousemove so the preview line "repaints" from a clean base each frame.
+// structuredClone is used (faster than JSON round-trip for sparse objects).
+let linePreviewSnapshot = null;
+
+// ── linePreviewSnapshot helpers ──────────────────────────────────────────────
+// Dense 630×630 layers: .map(r=>r.slice()) is ~10× faster than structuredClone
+// because slice() is a native bulk copy while structuredClone recurses per-element.
+// Placements (sparse): structuredClone is 3–5× faster than JSON round-trip.
+function _takeLinePreviewSnapshot() {
+  const layers = {};
+  for (const L of LAYERS) layers[L] = state.layers[L].map(r => r.slice());
+  linePreviewSnapshot = { layers, placements: structuredClone(state.placements) };
+}
+function _restoreLinePreviewSnapshot() {
+  if (!linePreviewSnapshot) return;
+  for (const L of LAYERS) state.layers[L] = linePreviewSnapshot.layers[L].map(r => r.slice());
+  state.placements = structuredClone(linePreviewSnapshot.placements);
+}
 
 // ── Alt-key eyedropper (Photoshop-style) ──
 // While Alt is held the canvas cursor flips to an eyedropper icon and
@@ -598,7 +621,7 @@ function makeEmptyGrid() {
   return g;
 }
 function newPid() { return "p" + (++placementCounter); }
-function getModule(id) { return MODULES.find(m => m.id === id); }
+function getModule(id) { return MODULE_MAP.get(id) ?? null; }
 function getLayerOf(moduleId) {
   const m = getModule(moduleId);
   return m ? m.layer : null;
@@ -634,7 +657,7 @@ function snapshot() {
   LAYERS.forEach(L => layers[L] = state.layers[L].map(r => r.slice()));
   return {
     layers,
-    placements: JSON.parse(JSON.stringify(state.placements)),
+    placements: structuredClone(state.placements),
     counter: placementCounter,
     groupCounter,
     groupColors: { ...groupColors },
@@ -643,7 +666,7 @@ function snapshot() {
 function restore(snap) {
   state.layers = {};
   LAYERS.forEach(L => state.layers[L] = snap.layers[L].map(r => r.slice()));
-  state.placements = JSON.parse(JSON.stringify(snap.placements));
+  state.placements = structuredClone(snap.placements);
   placementCounter = snap.counter;
   if (snap.groupCounter !== undefined) groupCounter = snap.groupCounter;
   if (snap.groupColors !== undefined) groupColors = { ...snap.groupColors };
@@ -1172,9 +1195,11 @@ function drawCursor() {
     lastCursorBounds = null;
   }
 
-  // ── Shift+drag straight-line preview (rubber-band) ──
+  // ── Shift-line preview (horizontal / vertical only) ──
   // Full clear because the line can span the whole canvas; bounds-tracking
-  // wouldn't be worth the bookkeeping.
+  // wouldn't be worth the bookkeeping. Brush hover rectangle is drawn at the
+  // snapped end so users still see where the brush lands — addresses the
+  // "the painted cell indicator disappears" complaint.
   if (isLineMode && lineStart && lineEnd) {
     cursorCtx.clearRect(0, 0, cursorCanvas.width, cursorCanvas.height);
     const isEraserLine = (currentTool === "eraser") ||
@@ -1196,6 +1221,10 @@ function drawCursor() {
     cursorCtx.beginPath();
     cursorCtx.arc((lineEnd.x + 0.5) * CELL_PX, (lineEnd.y + 0.5) * CELL_PX, 3.5, 0, 2*Math.PI);
     cursorCtx.fill();
+    // Brush hover rectangle at the snapped line end — keeps the "this is
+    // where the brush will land" indicator visible during the line drag.
+    drawBrushHoverAt(lineEnd.x, lineEnd.y);
+    lastCursorBounds = null;  // we did full-clear this frame, no dirty-rect needed
     return;
   }
 
@@ -1228,37 +1257,39 @@ function drawCursor() {
   }
 
   if (!hoverCell) return;
-  const { x, y } = hoverCell;
+  const bounds = drawBrushHoverAt(hoverCell.x, hoverCell.y);
+  // Remember region so next call can dirty-rect clear it.
+  lastCursorBounds = bounds;
+}
 
-  // Compute the stamp area based on tool + selected module
+// Draws the current tool's brush-area outline at the given cell, returning
+// the pixel bounds so callers can record them for dirty-rect clearing.
+// Used by both the normal hover preview AND the Shift-line preview (so the
+// brush rectangle stays visible at the line end while a line is being drawn).
+function drawBrushHoverAt(hx, hy) {
   let rx, ry, rw, rh, color;
   const isEraser    = (currentTool === "eraser");
   const isBucket    = (currentTool === "bucket");
   const isEraseAll  = (currentTool === "eraseAll");
 
   if (isBucket) {
-    rx = x * CELL_PX; ry = y * CELL_PX;
+    rx = hx * CELL_PX; ry = hy * CELL_PX;
     rw = CELL_PX; rh = CELL_PX;
     color = "rgba(120,200,255,0.85)";
   } else if (isEraseAll) {
-    // 전체 지우개 — always brush-sized regardless of selected module's footprint
-    const { x0, y0 } = brushBounds(x, y, brushSize);
+    const { x0, y0 } = brushBounds(hx, hy, brushSize);
     rx = x0 * CELL_PX; ry = y0 * CELL_PX;
     rw = brushSize * CELL_PX; rh = brushSize * CELL_PX;
-    color = "rgba(255,160,40,0.95)";   // bright orange — distinct from layer eraser
+    color = "rgba(255,160,40,0.95)";   // bright orange
   } else {
-    // Pen and Eraser both use the selected module's footprint (multi-cell)
-    // or brush_size × brush_size (1×1). Shape is identical; only color differs.
     if (isMultiCell(selectedModule)) {
       const m = getModule(selectedModule);
-      // Snap preview origin to match paint/erase behavior — user sees the
-      // exact tile the stamp will land on before clicking.
-      const sx = (m.snap && m.snap > 1) ? Math.floor(x / m.snap) * m.snap : x;
-      const sy = (m.snap && m.snap > 1) ? Math.floor(y / m.snap) * m.snap : y;
+      const sx = (m.snap && m.snap > 1) ? Math.floor(hx / m.snap) * m.snap : hx;
+      const sy = (m.snap && m.snap > 1) ? Math.floor(hy / m.snap) * m.snap : hy;
       rx = sx * CELL_PX; ry = sy * CELL_PX;
       rw = m.footprint[0] * CELL_PX; rh = m.footprint[1] * CELL_PX;
     } else {
-      const { x0, y0 } = brushBounds(x, y, brushSize);
+      const { x0, y0 } = brushBounds(hx, hy, brushSize);
       rx = x0 * CELL_PX; ry = y0 * CELL_PX;
       rw = brushSize * CELL_PX; rh = brushSize * CELL_PX;
     }
@@ -1266,12 +1297,10 @@ function drawCursor() {
   }
   cursorCtx.strokeStyle = color;
   cursorCtx.lineWidth = isEraseAll ? 2.5 : 1.5;
-  // Dashed outline for eraseAll so it's clearly a "wipe everything" mode at a glance.
   if (isEraseAll) cursorCtx.setLineDash([6, 4]);
   cursorCtx.strokeRect(rx + 0.5, ry + 0.5, rw - 1, rh - 1);
   if (isEraseAll) cursorCtx.setLineDash([]);
-  // Remember region so next call can dirty-rect clear it.
-  lastCursorBounds = { x: rx, y: ry, w: rw, h: rh };
+  return { x: rx, y: ry, w: rw, h: rh };
 }
 
 // ── Measurement overlay — dispatches by mode ───────────
@@ -1772,19 +1801,8 @@ canvas.addEventListener("mousedown", (e) => {
     return;
   }
 
-  // ── Shift+drag → 8-way constrained straight line (Photoshop-style) ──
-  // Mouse-down with Shift held starts a line drag from THIS cell. While
-  // dragging, the end point snaps to horizontal / vertical / 45° diagonal
-  // depending on cursor direction. Release commits via Bresenham.
-  if (e.shiftKey && currentTool !== "measure" && currentTool !== "select") {
-    pushUndo();
-    isLineMode = true;
-    lineButton = e.button;
-    lineStart  = { x, y };
-    lineEnd    = { x, y };
-    drawCursor();
-    return;
-  }
+  // (Shift+drag detection is now handled in mousemove so the user can
+  //  press Shift either before OR after the click — both work.)
 
   // Select tool — left drag = selection / clicking a grouped zone cell = move group.
   // All hunt-area editing (selection + group movement) lives on this tool so the
@@ -1860,11 +1878,24 @@ canvas.addEventListener("mousedown", (e) => {
   isDrawing = true;
   drawingButton = e.button;
   lastDrawCell = null;
+  dragStartCell = { x, y };     // remembered for Shift-line activation
   pushUndo();
   performToolAt(x, y, e.button);
   lastDrawCell = { x, y };
-  lastPaintAnchor = { x, y };   // Shift-line uses this as its start point
+  lastPaintAnchor = { x, y };
   drawPlacements();
+  // If Shift was held at mousedown, enter line mode immediately so the
+  // preview shows from the click point.
+  if (e.shiftKey && currentTool !== "measure" && currentTool !== "select") {
+    isLineMode = true;
+    lineButton = e.button;
+    lineStart  = { x, y };
+    lineEnd    = { x, y };
+    // Snapshot the state (including the anchor cell just painted) so live
+    // preview can restore+repaint cleanly on every mousemove frame.
+    _takeLinePreviewSnapshot();
+    drawCursor();
+  }
 });
 
 canvas.addEventListener("mousemove", (e) => {
@@ -1939,13 +1970,52 @@ canvas.addEventListener("mousemove", (e) => {
     // For path mode, hoverCell already updated above → cursor preview line draws automatically
   }
 
-  // Live update of Shift+drag line preview — cursor → 8-way snapped end point.
-  if (isLineMode) {
-    const snapped = snapTo8Way(lineStart.x, lineStart.y, x, y);
+  // ── Dynamic Shift-line mode transitions during a drag ──
+  // Whether Shift was pressed BEFORE the click or AFTER the click while
+  // dragging, the result is the same — line mode kicks in for any frame
+  // where Shift is held during an active drag. Releasing Shift mid-drag
+  // exits line mode and resumes free drag from the current cursor.
+  if (isDrawing) {
+    const shiftHeld = e.shiftKey && currentTool !== "measure" && currentTool !== "select";
+    if (shiftHeld && !isLineMode) {
+      // Enter line mode using dragStartCell as the anchor.
+      isLineMode = true;
+      lineButton = drawingButton;
+      lineStart  = dragStartCell ? { x: dragStartCell.x, y: dragStartCell.y } : { x, y };
+      lineEnd    = { x, y };
+      // Snapshot current state (may include free-draw cells from before shift
+      // was pressed) — this is the base the live preview restores from.
+      _takeLinePreviewSnapshot();
+    } else if (!shiftHeld && isLineMode) {
+      // Exit line mode — revert any live-preview cells painted since entering,
+      // then resume free drag from the current cursor position.
+      if (linePreviewSnapshot) {
+        _restoreLinePreviewSnapshot();
+        linePreviewSnapshot = null;
+        drawPlacements();
+      }
+      isLineMode = false;
+      lineStart  = null;
+      lineEnd    = null;
+      lastDrawCell = { x, y };
+    }
+  }
+
+  if (isLineMode && lineStart) {
+    const snapped = snapTo4Way(lineStart.x, lineStart.y, x, y);
     if (!lineEnd || lineEnd.x !== snapped.x || lineEnd.y !== snapped.y) {
       lineEnd = snapped;
-      drawCursor();
+      // Live preview: restore base state then repaint the current line so
+      // cells appear painted (and change as direction updates).
+      if (linePreviewSnapshot) {
+        _restoreLinePreviewSnapshot();
+        forEachLineCell(lineStart.x, lineStart.y, lineEnd.x, lineEnd.y, (cx, cy) => {
+          if (inBounds(cx, cy)) performToolAt(cx, cy, lineButton, true);
+        });
+        drawPlacements();
+      }
     }
+    drawCursor();   // redraws dashed line overlay + brush hover at snapped end
     return;
   }
 
@@ -2023,10 +2093,13 @@ window.addEventListener("mouseup", () => {
     dragGroupOrigPositions = null;
     setStatus("그룹 이동 완료");
   }
-  // Commit Shift+drag line — Bresenham-walk from anchor to release point.
-  // Each cell hits performToolAt with isDrag=true so the tool's per-cell
-  // logic (paint stamp / eraser / eraseAll) runs identically to free drag.
+  // Commit Shift+drag line — restore snapshot base + Bresenham-walk so the
+  // final result is authoritative (identical whether or not mousemove preview
+  // ran). Snapshot is discarded after commit.
   if (isLineMode && lineStart && lineEnd) {
+    if (linePreviewSnapshot) {
+      _restoreLinePreviewSnapshot();
+    }
     forEachLineCell(lineStart.x, lineStart.y, lineEnd.x, lineEnd.y, (cx, cy) => {
       if (inBounds(cx, cy)) performToolAt(cx, cy, lineButton, true);
     });
@@ -2034,11 +2107,13 @@ window.addEventListener("mouseup", () => {
     drawPlacements();
     drawCursor();
   }
+  linePreviewSnapshot = null;
   isLineMode = false;
   lineStart  = null;
   lineEnd    = null;
 
   isDrawing = false;
+  dragStartCell = null;
   lastDrawCell = null;
   measureActive = false;  // finalize current measurement (keeps last result visible)
   if (isDraggingAnn) {
@@ -2069,22 +2144,13 @@ window.addEventListener("mousemove", (e) => {
 
 canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
-// Snap an end-point to the nearest 8-way direction from (sx, sy) so a
-// Shift-drag draws a perfectly horizontal / vertical / 45° diagonal line.
-// The 2× ratio threshold mirrors Photoshop's feel: a clear vertical drag
-// must be more than 2× taller than wide to commit to "vertical", otherwise
-// it snaps to the nearest diagonal.
-function snapTo8Way(sx, sy, ex, ey) {
+// Snap an end-point to the dominant axis from (sx, sy) so a Shift-drag
+// draws a perfectly horizontal or vertical line. Whichever axis the cursor
+// moved further along wins — clean & predictable, no diagonals.
+function snapTo4Way(sx, sy, ex, ey) {
   const dx = ex - sx, dy = ey - sy;
-  const absDx = Math.abs(dx), absDy = Math.abs(dy);
-  if (absDx === 0 && absDy === 0) return { x: sx, y: sy };
-  if (absDx > 2 * absDy) return { x: ex, y: sy };          // horizontal
-  if (absDy > 2 * absDx) return { x: sx, y: ey };          // vertical
-  const d = Math.max(absDx, absDy);                        // diagonal
-  return {
-    x: sx + Math.sign(dx) * d,
-    y: sy + Math.sign(dy) * d,
-  };
+  if (Math.abs(dx) >= Math.abs(dy)) return { x: ex, y: sy };   // horizontal
+  return { x: sx, y: ey };                                     // vertical
 }
 
 // Bresenham line — walks every cell on the integer line from (x0,y0) to
