@@ -33,7 +33,6 @@ MODULE_STYLE = {
     "TER_Material_Red":   {"height": 0.05, "shape_factor": 1.0, "color": (1.000, 0.600, 0.553)},
     "TER_Material_Blue":  {"height": 0.05, "shape_factor": 1.0, "color": (0.576, 0.745, 1.000)},
     "TER_Material_Gray":  {"height": 0.05, "shape_factor": 1.0, "color": (0.553, 0.553, 0.553)},
-    "TER_SubLevel":       {"height": 0.05, "shape_factor": 1.0, "color": (0.54, 0.61, 0.69)},
     # Base terrain
     "TRN_Base_Grass":     {"height": 1.0, "shape_factor": 1.0, "color": (0.29, 0.60, 0.29)},
     "TRN_Base_Dirt":      {"height": 0.3, "shape_factor": 1.0, "color": (0.48, 0.35, 0.23)},
@@ -64,6 +63,8 @@ LEGACY_ID_MAP = {
     "BLD_House_Generic": "BLD_House_01",
     # Pre-multivariant default → loads as yellow
     "TER_Material":      "TER_Material_Yellow",
+    # SubLevel removed in v0.4.1 — old saves load as gray material
+    "TER_SubLevel":      "TER_Material_Gray",
 }
 
 # ────────────────────────────────────────────────────────────

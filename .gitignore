@@ -25,3 +25,7 @@ __pycache__/
 
 # Local config
 .env
+
+# Claude Code / OMC tooling — local dev artifacts only
+.claude/
+.omc/

@@ -53,6 +53,27 @@
   .palette-name { flex: 1; font-size: 12px; line-height: 1.2; }
   .palette-id { font-size: 10px; color: #777; font-family: monospace; }
   .palette-fp { font-size: 11px; color: #888; }
+  /* Grouped palette — one row, multiple clickable color swatches for variants */
+  .palette-group {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 8px; margin: 2px 0;
+    border: 1px solid #2c2c2c; border-radius: 4px;
+    user-select: none;
+  }
+  .swatch-row { display: flex; gap: 4px; flex-shrink: 0; }
+  .swatch-mini {
+    width: 22px; height: 22px;
+    border: 1px solid #555; border-radius: 2px;
+    cursor: pointer; flex-shrink: 0;
+    transition: transform 0.08s, border-color 0.08s, box-shadow 0.08s;
+  }
+  .swatch-mini:hover { transform: scale(1.08); border-color: #888; }
+  .swatch-mini.selected {
+    border-color: #5a9bdc;
+    box-shadow: 0 0 0 1px #5a9bdc, 0 0 6px rgba(90,155,220,0.5);
+  }
+  .group-name { flex: 1; font-size: 12px; line-height: 1.2; }
+  .group-hint { font-size: 10px; color: #777; }
   .lock-btn {
     background: transparent; border: none;
     cursor: pointer; padding: 1px 4px;
@@ -228,6 +249,9 @@
     <button class="tool-btn" data-tool="measure">측정 (3)</button>
     <button class="tool-btn" data-tool="select">선택 (4)</button>
   </div>
+  <div class="tools" style="margin-top:4px">
+    <button class="tool-btn" data-tool="eraseAll" style="flex:1" title="영토(TER)·사냥터(ZON) 제외 모든 레이어를 한 번에 지움">전체 지우개 (5)</button>
+  </div>
 
   <h2>브러시 크기 (펜/지우개)</h2>
   <div class="row">
@@ -236,11 +260,11 @@
   </div>
   <div class="brush-presets">
     <button class="brush-preset" data-size="1">1</button>
+    <button class="brush-preset" data-size="3">3</button>
+    <button class="brush-preset" data-size="5">5</button>
     <button class="brush-preset" data-size="10">10</button>
     <button class="brush-preset" data-size="20">20</button>
-    <button class="brush-preset" data-size="30">30</button>
     <button class="brush-preset" data-size="50">50</button>
-    <button class="brush-preset" data-size="100">100</button>
   </div>
   <div class="info" style="margin-top:-4px">
     <kbd>[</kbd> 작게 / <kbd>]</kbd> 크게 (멀티셀 모듈은 자동 무시)
@@ -285,12 +309,13 @@
     아래→위: <b>Base</b> → <b>Elevation</b> → <b>Environment</b><br>
     같은 셀에서 레이어가 다른 모듈은 공존<br>
     <b style="color:#bbb">지우개 동작</b><br>
-    팔레트에서 <b>선택한 모듈의 레이어/영역만</b> 지움<br>
+    <kbd>지우개(2)</kbd> 선택 모듈 레이어만 지움<br>
     (예: ELV 선택 시 base는 절대 안 지워짐)<br>
+    <kbd>전체 지우개(5)</kbd> TER·ZON 제외 모두 지움<br>
     <hr>
     <kbd>좌클릭</kbd> 칠하기/드래그<br>
     <kbd>우클릭</kbd> 지우개<br>
-    <kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd>/<kbd>4</kbd> 펜/지우개/측정/선택<br>
+    <kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd>/<kbd>4</kbd>/<kbd>5</kbd> 펜/지우개/측정/선택/전체지우개<br>
     선택(4) + 드래그: 사냥터 공간 선택<br>
     선택(4) + 그룹 클릭드래그: 그룹 이동<br>
     <kbd>Ctrl+G</kbd> 그룹화 / 해제 (토글)<br>
@@ -346,6 +371,12 @@
     <button class="action-btn" id="btn-measure-clear" style="font-size:11px">현재 측정 지우기</button>
   </div>
 
+  <h2>라벨 크기</h2>
+  <div class="row">
+    <input type="range" id="ann-label-size" min="12" max="40" value="22" style="flex:1">
+    <span id="ann-label-size-val" style="font-family:monospace;font-size:11px;color:#aaa;min-width:36px;text-align:right">22px</span>
+  </div>
+
   <h2>저장된 영역</h2>
   <div id="ann-list">
     <span style="color:#666;font-style:italic;font-size:11px;padding:6px;display:block">아직 저장된 영역 없음</span>
@@ -393,7 +424,6 @@ const MODULES = [
   { id: "TER_Material_Red",    name: "Material 빨강 (63×63)", color: "#FFB2AA", color2: "#FF998D", pattern: "checker", footprint: [63,63], layer: "territory", snap: 63 },
   { id: "TER_Material_Blue",   name: "Material 파랑 (63×63)", color: "#CEDFFF", color2: "#93BEFF", pattern: "checker", footprint: [63,63], layer: "territory", snap: 63 },
   { id: "TER_Material_Gray",   name: "Material 회색 (63×63)", color: "#BFBFBF", color2: "#8D8D8D", pattern: "checker", footprint: [63,63], layer: "territory", snap: 63 },
-  { id: "TER_SubLevel",        name: "SubLevel (126×126)",    color: "#8a9bb0", footprint: [126,126], layer: "territory", snap: 126 },
   // Base terrain — flat 1×1 ground at z=0
   { id: "TRN_Base_Grass",    name: "잔디",            color: "#4a9a4a", footprint: [1,1], layer: "base" },
   { id: "TRN_Base_Dirt",     name: "흙",              color: "#7a5a3a", footprint: [1,1], layer: "base" },
@@ -427,6 +457,8 @@ const LEGACY_ID_MAP = {
   "BLD_House_Generic": "BLD_House_01",
   // Pre-multivariant default → defaults to yellow on load
   "TER_Material":      "TER_Material_Yellow",
+  // SubLevel removed in v0.4.1 — old saves load as gray material so layout survives.
+  "TER_SubLevel":      "TER_Material_Gray",
 };
 
 // ═══════════════════════════════════════════════════════
@@ -519,6 +551,20 @@ let annCounter = 0;
 let selectedAnnId = null;
 let isDraggingAnn = false;
 let dragLastCell = null;     // {x, y} last cursor cell during drag (incremental delta)
+
+// Annotation label rendering — user-adjustable size (matches upstream parity).
+// Pad/height/gap all scale off the chosen font size so labels keep good padding
+// at any size from 12 (compact) → 40 (presentation-grade).
+let annLabelSize = 22;
+function annLabelMetrics(size = annLabelSize) {
+  return {
+    font:   `bold ${size}px 'Segoe UI', sans-serif`,
+    height: Math.round(size * 1.27),
+    padX:   Math.round(size * 0.36),
+    padY:   Math.round(size * 0.18),
+    gap:    Math.round(size * 0.18),
+  };
+}
 
 function makeEmptyGrid() {
   const g = [];
@@ -1056,6 +1102,22 @@ function eraseStamp(x, y, moduleId, size) {
   }
 }
 
+// "전체 지우개" tool — sweeps every layer EXCEPT territory and zone within an
+// N×N brush region. Lets designers wipe a build/road/env area cleanly without
+// flipping palette selection per layer; territory & hunt-area survive so the
+// underlying region markers stay intact (re-use is the common case).
+const ERASE_ALL_LAYERS = ["base", "elevation", "environment", "road"];
+function eraseAllAt(x, y, size) {
+  const { x0, y0 } = brushBounds(x, y, size);
+  for (let dy = 0; dy < size; dy++) {
+    for (let dx = 0; dx < size; dx++) {
+      const xx = x0 + dx, yy = y0 + dy;
+      if (!inBounds(xx, yy)) continue;
+      for (const L of ERASE_ALL_LAYERS) eraseAt(xx, yy, L);
+    }
+  }
+}
+
 // ═══════════════════════════════════════════════════════
 // Cursor preview — outline of where the tool will land
 // ═══════════════════════════════════════════════════════
@@ -1114,13 +1176,20 @@ function drawCursor() {
 
   // Compute the stamp area based on tool + selected module
   let rx, ry, rw, rh, color;
-  const isEraser = (currentTool === "eraser");
-  const isBucket = (currentTool === "bucket");
+  const isEraser    = (currentTool === "eraser");
+  const isBucket    = (currentTool === "bucket");
+  const isEraseAll  = (currentTool === "eraseAll");
 
   if (isBucket) {
     rx = x * CELL_PX; ry = y * CELL_PX;
     rw = CELL_PX; rh = CELL_PX;
     color = "rgba(120,200,255,0.85)";
+  } else if (isEraseAll) {
+    // 전체 지우개 — always brush-sized regardless of selected module's footprint
+    const { x0, y0 } = brushBounds(x, y, brushSize);
+    rx = x0 * CELL_PX; ry = y0 * CELL_PX;
+    rw = brushSize * CELL_PX; rh = brushSize * CELL_PX;
+    color = "rgba(255,160,40,0.95)";   // bright orange — distinct from layer eraser
   } else {
     // Pen and Eraser both use the selected module's footprint (multi-cell)
     // or brush_size × brush_size (1×1). Shape is identical; only color differs.
@@ -1140,8 +1209,11 @@ function drawCursor() {
     color = isEraser ? "rgba(255,90,90,0.85)" : "rgba(255,255,255,0.85)";
   }
   cursorCtx.strokeStyle = color;
-  cursorCtx.lineWidth = 1.5;
+  cursorCtx.lineWidth = isEraseAll ? 2.5 : 1.5;
+  // Dashed outline for eraseAll so it's clearly a "wipe everything" mode at a glance.
+  if (isEraseAll) cursorCtx.setLineDash([6, 4]);
   cursorCtx.strokeRect(rx + 0.5, ry + 0.5, rw - 1, rh - 1);
+  if (isEraseAll) cursorCtx.setLineDash([]);
   // Remember region so next call can dirty-rect clear it.
   lastCursorBounds = { x: rx, y: ry, w: rw, h: rh };
 }
@@ -1330,18 +1402,17 @@ function updateMeasurePanel() {
     el.innerHTML = `<span class="hint">모드 선택 후 캔버스에서<br>드래그 (사각/원) 또는 클릭 (경로)</span>`;
     return;
   }
+  // ── Measure display — matched to upstream (kei-artlab) for parity ──
+  // Rect: 대각선 + 가로×세로 + 영역
+  // Circle: 반경 + 영역 (πr²)
+  // Path: 포인트 수 + 세그먼트 + 총 거리 + 이동시간 @WALK_SPEED_MPS
   if (measureMode === "rect") {
     const s = currentMeasure.start, e = currentMeasure.end;
     const dx = e.x - s.x, dy = e.y - s.y;
     const eu = Math.hypot(dx, dy);
-    const ma = Math.abs(dx) + Math.abs(dy);
     const w  = Math.abs(dx) + 1, h = Math.abs(dy) + 1;
     el.innerHTML =
-      `<div class="row">시작: (${s.x}, ${s.y})</div>` +
-      `<div class="row">끝&nbsp;&nbsp;: (${e.x}, ${e.y})</div>` +
-      `<hr style="margin:6px 0;border-color:#2c2c2c">` +
       `<div class="row">대각선: <b>${eu.toFixed(2)} m</b></div>` +
-      `<div class="row">격자 거리: <b>${ma} m</b></div>` +
       `<div class="row">가로 × 세로: <b>${w} × ${h}</b></div>` +
       `<div class="row">영역: <b>${w * h} m²</b></div>`;
   }
@@ -1349,14 +1420,8 @@ function updateMeasurePanel() {
     const c = currentMeasure.center, e = currentMeasure.edge;
     const r = Math.hypot(e.x - c.x, e.y - c.y);
     const area = Math.PI * r * r;
-    const circ = 2 * Math.PI * r;
     el.innerHTML =
-      `<div class="row">중심: (${c.x}, ${c.y})</div>` +
-      `<div class="row">가장자리: (${e.x}, ${e.y})</div>` +
-      `<hr style="margin:6px 0;border-color:#2c2c2c">` +
       `<div class="row">반경 (r): <b>${r.toFixed(2)} m</b></div>` +
-      `<div class="row">지름 (d): <b>${(2 * r).toFixed(2)} m</b></div>` +
-      `<div class="row">둘레: <b>${circ.toFixed(2)} m</b></div>` +
       `<div class="row">영역 (πr²): <b>${area.toFixed(1)} m²</b></div>`;
   }
   else if (measureMode === "path") {
@@ -1378,7 +1443,7 @@ function updateMeasurePanel() {
         (segments.length > 8 ? `<div class="row" style="font-size:10px;color:#666">… +${segments.length - 8}개</div>` : "") +
         `<hr style="margin:6px 0;border-color:#2c2c2c">` +
         `<div class="row">총 거리: <b>${total.toFixed(2)} m</b></div>` +
-        `<div class="row">이동시간: <b>${eta.toFixed(1)} s</b> @1.4m/s</div>`;
+        `<div class="row">이동시간: <b>${eta.toFixed(1)} s</b> @${WALK_SPEED_MPS}m/s</div>`;
     } else {
       html += `<div class="row" style="color:#888">점을 더 추가하세요…</div>`;
     }
@@ -1411,11 +1476,10 @@ function drawSingleAnnotation(c, a, isSelected) {
   c.lineWidth = isSelected ? 3 : 2;
   if (isSelected) c.setLineDash([6, 4]);
 
-  // Label = colored pill ABOVE the shape, large readable font.
-  const LABEL_FONT = 40;
-  const LABEL_H = 56;
-  const LABEL_PAD = 8;
-  c.font = `bold ${LABEL_FONT}px 'Segoe UI', monospace`;
+  // Label dimensions scale with the user-controlled annLabelSize slider so
+  // designers can match font weight to map zoom (compact 12px ↔ pres 40px).
+  const M = annLabelMetrics();
+  c.font = M.font;
   c.textAlign = "start";
   c.textBaseline = "alphabetic";
 
@@ -1425,11 +1489,11 @@ function drawSingleAnnotation(c, a, isSelected) {
     c.fillRect(px, py, pw, ph);
     c.strokeRect(px + 0.5, py + 0.5, pw - 1, ph - 1);
     if (a.label) {
-      const labelW = c.measureText(a.label).width + LABEL_PAD * 2;
+      const labelW = c.measureText(a.label).width + M.padX * 2;
       c.fillStyle = strokeCol;
-      c.fillRect(px, py - LABEL_H, labelW, LABEL_H);
+      c.fillRect(px, py - M.height, labelW, M.height);
       c.fillStyle = "#000";
-      c.fillText(a.label, px + LABEL_PAD, py - LABEL_PAD);
+      c.fillText(a.label, px + M.padX, py - M.padY);
     }
   } else if (a.type === "circle") {
     const cx = (a.cx + 0.5) * CELL_PX;
@@ -1439,11 +1503,11 @@ function drawSingleAnnotation(c, a, isSelected) {
     c.fillStyle = strokeCol;
     c.beginPath(); c.arc(cx, cy, 3, 0, 2*Math.PI); c.fill();
     if (a.label) {
-      const labelW = c.measureText(a.label).width + LABEL_PAD * 2;
+      const labelW = c.measureText(a.label).width + M.padX * 2;
       c.fillStyle = strokeCol;
-      c.fillRect(cx - labelW / 2, cy - rPx - LABEL_H - 4, labelW, LABEL_H);
+      c.fillRect(cx - labelW / 2, cy - rPx - M.height - M.gap, labelW, M.height);
       c.fillStyle = "#000";
-      c.fillText(a.label, cx - labelW / 2 + LABEL_PAD, cy - rPx - 4 - LABEL_PAD);
+      c.fillText(a.label, cx - labelW / 2 + M.padX, cy - rPx - M.gap - M.padY);
     }
   } else if (a.type === "path") {
     if (a.points.length < 2) { c.setLineDash([]); return; }
@@ -1460,13 +1524,13 @@ function drawSingleAnnotation(c, a, isSelected) {
       c.fill();
     });
     if (a.label) {
-      const labelW = c.measureText(a.label).width + LABEL_PAD * 2;
+      const labelW = c.measureText(a.label).width + M.padX * 2;
       const fx = (a.points[0].x + 0.5) * CELL_PX;
-      const fy = (a.points[0].y + 0.5) * CELL_PX - LABEL_H - 4;
+      const fy = (a.points[0].y + 0.5) * CELL_PX - M.height - M.gap;
       c.fillStyle = strokeCol;
-      c.fillRect(fx, fy, labelW, LABEL_H);
+      c.fillRect(fx, fy, labelW, M.height);
       c.fillStyle = "#000";
-      c.fillText(a.label, fx + LABEL_PAD, fy + LABEL_H - LABEL_PAD);
+      c.fillText(a.label, fx + M.padX, fy + M.height - M.padY);
     }
   }
   c.setLineDash([]);
@@ -1749,10 +1813,16 @@ canvas.addEventListener("mousemove", (e) => {
 
   if (inBounds(x, y)) {
     const stack = stackAt(x, y);
-    const brushMsg = (brushSize > 1 && !isMultiCell(selectedModule)) ? ` · 브러시 ${brushSize}×${brushSize}` : "";
+    // 전체 지우개 brush is ALWAYS active (no selected-module gate), so its brush msg
+    // shows regardless of whether selectedModule is multi-cell.
+    const eraseAllActive = currentTool === "eraseAll";
+    const brushMsg = (brushSize > 1 && (eraseAllActive || !isMultiCell(selectedModule)))
+      ? ` · 브러시 ${brushSize}×${brushSize}` : "";
     const stackMsg = stack.length ? ` · ${stack.join(" + ")}` : "";
     const m = getModule(selectedModule);
-    const toolMsg = (currentTool === "eraser" && m) ? ` · 지우개→${m.layer}` : "";
+    let toolMsg = "";
+    if (currentTool === "eraser" && m)        toolMsg = ` · 지우개→${m.layer}`;
+    else if (currentTool === "eraseAll")      toolMsg = ` · 전체 지우개 (TER/ZON 제외)`;
     setStatus(`(${x}, ${y})${toolMsg}${brushMsg}${stackMsg}`);
     hoverCell = { x, y };
     updateCellInfo(x, y);
@@ -1892,8 +1962,11 @@ canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 function performToolAt(x, y, button, isDrag = false) {
   const isRight = button === 2;
   if (currentTool === "measure") return;  // measure handled in mousedown/move
-  if (isRight || currentTool === "eraser") {
-    // Eraser scopes to selected module's layer + footprint (or brush for 1×1)
+  // 전체 지우개 mode treats both clicks the same — wipe non-TER/ZON layers.
+  if (currentTool === "eraseAll") {
+    eraseAllAt(x, y, brushSize);
+  } else if (isRight || currentTool === "eraser") {
+    // Right-click + Eraser(2) both scope to selected module's layer.
     eraseStamp(x, y, selectedModule, brushSize);
   } else if (currentTool === "bucket") {
     if (!isDrag) bucketFill(x, y, selectedModule);
@@ -1903,8 +1976,45 @@ function performToolAt(x, y, button, isDrag = false) {
 }
 
 // ═══════════════════════════════════════════════════════
-// Palette (grouped by layer)
+// Palette (grouped by layer; variants collapsed into one row)
 // ═══════════════════════════════════════════════════════
+// Groups of multi-variant modules that should share a single palette row.
+// Each variant (e.g. TER_Material_Yellow/Red/Blue/Gray) is rendered as a
+// small clickable color swatch — click to select that variant.
+const PALETTE_GROUPS = [
+  {
+    key:  "TER_Material",
+    name: "영토 Material",
+    hint: "색 클릭으로 영역 구분",
+    ids:  ["TER_Material_Yellow", "TER_Material_Red", "TER_Material_Blue", "TER_Material_Gray"],
+  },
+  {
+    key:  "ENV_Nature",
+    name: "자연물",
+    hint: "1×1 변형 · 브러시로 영역 페인팅",
+    ids:  ["ENV_Nature_01", "ENV_Nature_02"],
+  },
+  {
+    key:  "BLD_House",
+    name: "건물",
+    hint: "1×1 변형 · 마을 영역 페인팅",
+    ids:  ["BLD_House_01", "BLD_House_02", "BLD_House_03"],
+  },
+];
+// Build a lookup: module-id → group-key (used to skip individual rows so the
+// group renders once at the position of its first variant).
+const GROUP_OF_MODULE = (() => {
+  const map = {};
+  PALETTE_GROUPS.forEach(g => g.ids.forEach(id => { map[id] = g.key; }));
+  return map;
+})();
+
+function makeSwatchStyle(m) {
+  return (m.pattern === "checker" && m.color2)
+    ? `background: conic-gradient(${m.color} 0deg 90deg, ${m.color2} 90deg 180deg, ${m.color} 180deg 270deg, ${m.color2} 270deg)`
+    : `background:${m.color}`;
+}
+
 function buildPalette() {
   const el = document.getElementById("palette");
   el.innerHTML = "";
@@ -1943,21 +2053,53 @@ function buildPalette() {
         setStatus(territoryLocked ? "🔒 영토 레이어 잠금" : "🔓 영토 레이어 잠금 해제");
       });
     }
+    const groupsRendered = new Set();
     items.forEach(m => {
+      const groupKey = GROUP_OF_MODULE[m.id];
+      if (groupKey) {
+        // Render the group exactly once, at the position of its first variant.
+        if (groupsRendered.has(groupKey)) return;
+        groupsRendered.add(groupKey);
+        const group = PALETTE_GROUPS.find(g => g.key === groupKey);
+        const variants = group.ids
+          .map(id => MODULES.find(mm => mm.id === id))
+          .filter(Boolean);
+        const row = document.createElement("div");
+        row.className = "palette-group";
+        const swatches = variants.map(v =>
+          `<div class="swatch-mini${v.id === selectedModule ? " selected" : ""}" ` +
+          `data-id="${v.id}" title="${v.name}" style="${makeSwatchStyle(v)}"></div>`
+        ).join("");
+        row.innerHTML =
+          `<div class="swatch-row">${swatches}</div>` +
+          `<div class="group-name">${group.name}<div class="group-hint">${group.hint}</div></div>`;
+        row.querySelectorAll(".swatch-mini").forEach(sw => {
+          sw.addEventListener("click", () => {
+            selectedModule = sw.dataset.id;
+            // Clear selection across both grouped swatches and standalone items.
+            document.querySelectorAll(".swatch-mini.selected").forEach(e => e.classList.remove("selected"));
+            document.querySelectorAll(".palette-item.selected").forEach(e => e.classList.remove("selected"));
+            sw.classList.add("selected");
+            const picked = MODULES.find(mm => mm.id === selectedModule);
+            setStatus(`선택: ${picked.name}`);
+            drawCursor();
+          });
+        });
+        el.appendChild(row);
+        return;
+      }
+      // Standalone (non-grouped) module → original single-row layout
       const item = document.createElement("div");
       item.className = "palette-item" + (m.id === selectedModule ? " selected" : "");
       item.dataset.id = m.id;
-      // Checker swatch uses conic-gradient → small 2×2 board preview.
-      const swatchStyle = (m.pattern === "checker" && m.color2)
-        ? `background: conic-gradient(${m.color} 0deg 90deg, ${m.color2} 90deg 180deg, ${m.color} 180deg 270deg, ${m.color2} 270deg)`
-        : `background:${m.color}`;
       item.innerHTML =
-        `<div class="swatch" style="${swatchStyle}"></div>` +
+        `<div class="swatch" style="${makeSwatchStyle(m)}"></div>` +
         `<div class="palette-name">${m.name}<div class="palette-id">${m.id}</div></div>` +
         `<div class="palette-fp">${m.footprint[0]}×${m.footprint[1]}</div>`;
       item.addEventListener("click", () => {
         selectedModule = m.id;
-        document.querySelectorAll(".palette-item").forEach(e => e.classList.remove("selected"));
+        document.querySelectorAll(".swatch-mini.selected").forEach(e => e.classList.remove("selected"));
+        document.querySelectorAll(".palette-item.selected").forEach(e => e.classList.remove("selected"));
         item.classList.add("selected");
         setStatus(`선택: ${m.name}`);
         drawCursor();
@@ -2071,6 +2213,16 @@ document.getElementById("ann-label").addEventListener("keydown", (e) => {
     e.preventDefault();
     saveCurrentAsAnnotation();
   }
+});
+
+// Annotation label-size slider — live preview as you drag, repaints all
+// saved annotations using new metrics.
+const annLabelSlider = document.getElementById("ann-label-size");
+const annLabelSizeVal = document.getElementById("ann-label-size-val");
+annLabelSlider.addEventListener("input", (e) => {
+  annLabelSize = Math.max(12, Math.min(40, +e.target.value | 0));
+  annLabelSizeVal.textContent = `${annLabelSize}px`;
+  drawAnnotations();
 });
 
 // ═══════════════════════════════════════════════════════
@@ -2379,6 +2531,7 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "2") { e.preventDefault(); document.querySelector('.tool-btn[data-tool="eraser"]')?.click(); }
   if (e.key === "3") { e.preventDefault(); document.querySelector('.tool-btn[data-tool="measure"]')?.click(); }
   if (e.key === "4") { e.preventDefault(); document.querySelector('.tool-btn[data-tool="select"]')?.click(); }
+  if (e.key === "5") { e.preventDefault(); document.querySelector('.tool-btn[data-tool="eraseAll"]')?.click(); }
   // Move mode shortcuts
   if (currentTool === "measure" && measureMode === "move") {
     if (e.key === "Escape") { e.preventDefault(); deselectAnnotation(); }
