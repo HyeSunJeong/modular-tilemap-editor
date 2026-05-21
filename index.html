@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>Tilemap Editor — 630×630 (v0.4.3)</title>
+<title>Tilemap Editor — 630×630 (v0.4.4)</title>
 <style>
   * { box-sizing: border-box; }
   body {
@@ -246,8 +246,8 @@
   <div class="tools">
     <button class="tool-btn active" data-tool="pen">펜 (1)</button>
     <button class="tool-btn" data-tool="eraser">지우개 (2)</button>
-    <button class="tool-btn" data-tool="measure">측정 (3)</button>
-    <button class="tool-btn" data-tool="select">선택 (4)</button>
+    <button class="tool-btn" data-tool="select">선택 (3)</button>
+    <button class="tool-btn" data-tool="measure">측정 (4)</button>
   </div>
   <div class="tools" style="margin-top:4px">
     <button class="tool-btn" data-tool="eraseAll" style="flex:1" title="영토(TER)·사냥터(ZON) 제외 모든 레이어를 한 번에 지움">전체 지우개 (5)</button>
@@ -322,9 +322,12 @@
     <kbd>Shift</kbd>+좌클릭+드래그 직선 (가로/세로)<br>
     <kbd>Alt</kbd>+클릭 스포이드 (모듈 빠른 선택)<br>
     <kbd>Ctrl+S</kbd> 저장 (첫 사용 시 경로 지정)<br>
-    <kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd>/<kbd>4</kbd>/<kbd>5</kbd> 펜/지우개/측정/선택/전체지우개<br>
-    선택(4) + 드래그: 사냥터 공간 선택<br>
-    선택(4) + 그룹 클릭드래그: 그룹 이동<br>
+    <kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd>/<kbd>4</kbd>/<kbd>5</kbd> 펜/지우개/선택/측정/전체지우개<br>
+    선택(3) + 드래그: 사냥터 공간 선택 (강조 표시)<br>
+    선택(3) + Shift+드래그: 선택 영역 추가 (Figma식)<br>
+    <kbd>Ctrl+G</kbd>로 그룹화한 뒤에만 이동 가능<br>
+    선택(3) + 그룹 클릭드래그: 그룹 이동<br>
+    <kbd>휠 클릭</kbd>+드래그: 거리 빠른 측정 (모든 도구)<br>
     <kbd>Ctrl+G</kbd> 그룹화 / 해제 (토글)<br>
     <kbd>Ctrl+Z</kbd>/<kbd>Y</kbd> 되돌리기<br>
     파일을 창에 드래그:<br>
@@ -390,11 +393,18 @@
   </div>
   <button class="action-btn" id="btn-ann-clear-all" style="margin-top:4px;font-size:11px;padding:5px">전체 영역 삭제</button>
 
+  <div id="selection-info" style="display:none;margin-top:8px;padding:8px;border:1px solid #2a2a2a;border-radius:4px;background:#1c1c1c;font-size:12px">
+    <div class="row"><b style="color:#ffd700">선택 영역 (사냥터)</b></div>
+    <div class="row" style="margin-top:2px">사냥터: <b id="sel-unit-count">0</b> 칸</div>
+    <div class="row" style="color:#888;font-size:10px;margin-top:3px">완전히 들어간 10×10 유닛만 카운트</div>
+  </div>
+
   <div class="info" style="margin-top:6px">
     <kbd>사각</kbd>: 영역 크기·면적 (몬스터존, 보스존)<br>
     <kbd>원</kbd>: 반경·둘레 (NPC 시선, 스킬 범위)<br>
     <kbd>경로</kbd>: 클릭 누적, 총 거리·이동시간<br>
-    이동속도: 4.2 m/s (PC 기준 · 420 cm/sec)
+    달리기: 4.2 m/s (PC · 420 cm/s)<br>
+    탈것: 7.5 m/s (탈것 · 750 cm/s)
   </div>
 
   <h2>현재 셀</h2>
@@ -582,6 +592,19 @@ let dragGroupPids = null;          // array of pids being moved
 let dragGroupStartCell = null;     // {x, y} cell at mousedown
 let dragGroupOrigPositions = null; // pid → {x, y} original positions (so delta math doesn't accumulate)
 
+// Shift+drag union flag — when true, the in-progress rect adds to the
+// existing selection on mouseup instead of replacing it.
+let selectionRectIsAdditive = false;
+// Frozen baseline for additive (Shift) drags so the live preview can show
+// the existing selection PLUS the rect-contained hits without ever shrinking.
+let selectionBaseline = null;
+// rAF coalescing handle for selection-rect live preview. Multiple mousemoves
+// per frame collapse into a single recompute+redraw at refresh time.
+let selectionPreviewRAF = null;
+// Last cell-coord rect endpoint we processed — used to short-circuit
+// mousemoves that don't change the integer cell (1 cell = CELL_PX px).
+let selectionLastCell = null;
+
 // ── Measure / Annotation ──────────────────────────────
 // "측정" tool has 3 modes selectable from right panel:
 //   rect   — drag corner-to-corner, area/dimensions
@@ -589,7 +612,9 @@ let dragGroupOrigPositions = null; // pid → {x, y} original positions (so delt
 //   path   — click-to-add points, segment + total distance
 // Each measurement can be saved as an annotation (persistent overlay).
 const ANN_COLORS = ["#ff6b6b","#4ecdc4","#ffd166","#a78bfa","#06d6a0","#ffa07a","#ec4899","#60a5fa"];
-const WALK_SPEED_MPS = 4.2;  // PC walking speed: 420 cm/sec → 4.2 m/sec
+const WALK_SPEED_MPS    = 4.2;  // legacy alias (kept for back-compat)
+const RUN_SPEED_MPS     = 4.2;  // 달리기 (PC 기본): 420 cm/s
+const VEHICLE_SPEED_MPS = 7.5;  // 탈것: 750 cm/s
 
 let measureMode = "rect";    // "rect" | "circle" | "path" | "move"
 let currentMeasure = null;   // shape-specific data; null when idle
@@ -600,6 +625,14 @@ let annCounter = 0;
 let selectedAnnId = null;
 let isDraggingAnn = false;
 let dragLastCell = null;     // {x, y} last cursor cell during drag (incremental delta)
+
+// ── Quick distance measure (middle mouse button click+drag) ─────
+// Works in any tool — overlays a ruler line + meters label while held,
+// disappears on release. Decoupled from the measure tool so it never
+// interferes with painting/selection state.
+let isQuickMeasuring   = false;
+let quickMeasureStart  = null;   // {x, y} cell at mousedown
+let quickMeasureEnd    = null;   // {x, y} cell at last mousemove
 
 // Annotation label rendering — user-adjustable size (matches upstream parity).
 // Pad/height/gap all scale off the chosen font size so labels keep good padding
@@ -672,6 +705,7 @@ function restore(snap) {
   if (snap.groupColors !== undefined) groupColors = { ...snap.groupColors };
   // Stale selections after restore are confusing — clear them.
   selectedPids = new Set();
+  if (typeof updateSelectionPanel === "function") updateSelectionPanel();
 }
 function pushUndo() {
   undoStack.push(snapshot());
@@ -1037,6 +1071,56 @@ function ungroupAt(x, y) {
   drawPlacements();
 }
 
+// Collect origin pids of every hunt unit FULLY contained in [x0..x1, y0..y1].
+// Sparse iteration: walk state.placements (zone layer only) and pick the
+// origin cell of each unit. O(zone placements) regardless of rect size —
+// avoids the worst-case 630×630 = 396k cell scan when the rect is huge.
+function collectHuntOriginsInRect(x0, y0, x1, y1) {
+  const out = new Set();
+  for (const pid in state.placements) {
+    const p = state.placements[pid];
+    if (p.layer !== "zone") continue;
+    const m = getModule(p.module);
+    const snap = (m && m.snap) || 1;
+    // Skip non-origin cells of multi-cell units (only check the top-left of each unit).
+    if (snap > 1 && (p.x % snap !== 0 || p.y % snap !== 0)) continue;
+    // FULL containment — partial overlap doesn't select the unit.
+    if (p.x < x0 || p.y < y0 || p.x + snap - 1 > x1 || p.y + snap - 1 > y1) continue;
+    out.add(pid);
+  }
+  return out;
+}
+
+// During an active rect selection: recompute selectedPids as baseline ∪ hits
+// (additive) or just hits (replace). Called from mousemove + mouseup.
+function recomputeSelectionFromRect() {
+  if (!selectionRect) return;
+  const x0 = Math.min(selectionRect.x0, selectionRect.x1);
+  const y0 = Math.min(selectionRect.y0, selectionRect.y1);
+  const x1 = Math.max(selectionRect.x0, selectionRect.x1);
+  const y1 = Math.max(selectionRect.y0, selectionRect.y1);
+  const hits = collectHuntOriginsInRect(x0, y0, x1, y1);
+  if (selectionRectIsAdditive && selectionBaseline) {
+    selectedPids = new Set(selectionBaseline);
+    hits.forEach(p => selectedPids.add(p));
+  } else {
+    selectedPids = hits;
+  }
+}
+
+// Update the right-panel selection info block (hunt unit count + total cells).
+function updateSelectionPanel() {
+  const el = document.getElementById("selection-info");
+  if (!el) return;
+  const n = selectedPids.size;
+  if (n === 0 || currentTool !== "select") {
+    el.style.display = "none";
+    return;
+  }
+  document.getElementById("sel-unit-count").textContent = n;
+  el.style.display = "block";
+}
+
 // Translate the dragging group by (dx, dy) cells from drag-start. Aborts the
 // move if any destination is out of bounds or occupied by a non-group cell —
 // avoids silently overwriting other groups or unrelated placements.
@@ -1228,6 +1312,42 @@ function drawCursor() {
     return;
   }
 
+  // Quick distance measure (middle mouse drag) — top-priority overlay that
+  // works in any tool. Full-clear + draw ruler line, endpoints, distance label.
+  if (isQuickMeasuring && quickMeasureStart && quickMeasureEnd) {
+    cursorCtx.clearRect(0, 0, cursorCanvas.width, cursorCanvas.height);
+    const sx = (quickMeasureStart.x + 0.5) * CELL_PX;
+    const sy = (quickMeasureStart.y + 0.5) * CELL_PX;
+    const ex = (quickMeasureEnd.x   + 0.5) * CELL_PX;
+    const ey = (quickMeasureEnd.y   + 0.5) * CELL_PX;
+    const dCells = Math.hypot(quickMeasureEnd.x - quickMeasureStart.x,
+                              quickMeasureEnd.y - quickMeasureStart.y);
+    // Line (1 cell = 1 m, so distance in cells == meters)
+    cursorCtx.strokeStyle = "#00e0ff";
+    cursorCtx.lineWidth = 2;
+    cursorCtx.setLineDash([6, 4]);
+    cursorCtx.beginPath();
+    cursorCtx.moveTo(sx, sy);
+    cursorCtx.lineTo(ex, ey);
+    cursorCtx.stroke();
+    cursorCtx.setLineDash([]);
+    // Endpoints
+    cursorCtx.fillStyle = "#00e0ff";
+    cursorCtx.beginPath(); cursorCtx.arc(sx, sy, 4, 0, 2*Math.PI); cursorCtx.fill();
+    cursorCtx.beginPath(); cursorCtx.arc(ex, ey, 4, 0, 2*Math.PI); cursorCtx.fill();
+    // Distance label below midpoint
+    const mxLabel = (sx + ex) / 2;
+    const myLabel = (sy + ey) / 2 + 18;
+    const label = `${dCells.toFixed(2)} m`;
+    cursorCtx.font = "bold 14px 'Segoe UI', sans-serif";
+    const tw = cursorCtx.measureText(label).width;
+    cursorCtx.fillStyle = "rgba(0, 0, 0, 0.78)";
+    cursorCtx.fillRect(mxLabel - tw/2 - 6, myLabel - 12, tw + 12, 20);
+    cursorCtx.fillStyle = "#00e0ff";
+    cursorCtx.fillText(label, mxLabel - tw/2, myLabel + 3);
+    return;
+  }
+
   // Shift+drag selection rectangle (live during drag) — replaces normal cursor.
   // Selection can grow large, so we full-clear and skip bounds tracking.
   if (isSelecting && selectionRect) {
@@ -1257,6 +1377,14 @@ function drawCursor() {
   }
 
   if (!hoverCell) return;
+  // In select tool, the brush-hover outline would visually cover the dashed
+  // outlines on selected hunt cells (especially with 10×10 ZON modules).
+  // The select tool doesn't paint, so skip the hover entirely — the cursor
+  // arrow itself is enough affordance.
+  if (currentTool === "select") {
+    lastCursorBounds = null;
+    return;
+  }
   const bounds = drawBrushHoverAt(hoverCell.x, hoverCell.y);
   // Remember region so next call can dirty-rect clear it.
   lastCursorBounds = bounds;
@@ -1473,9 +1601,12 @@ function updateMeasurePanel() {
               `<div class="row">반경: ${a.r.toFixed(2)} m</div>` +
               `<div class="row">영역: ${(Math.PI*a.r*a.r).toFixed(1)} m²</div>`;
     } else if (a.type === "path") {
+      const total = pathLength(a.points);
       info += `<div class="row">시작: (${a.points[0].x}, ${a.points[0].y})</div>` +
               `<div class="row">포인트: ${a.points.length}개</div>` +
-              `<div class="row">총 거리: ${pathLength(a.points).toFixed(2)} m</div>`;
+              `<div class="row">총 거리: ${total.toFixed(2)} m</div>` +
+              `<div class="row">달리기: ${(total/RUN_SPEED_MPS).toFixed(1)} s <span style="color:#888;font-size:10px">@${RUN_SPEED_MPS}m/s</span></div>` +
+              `<div class="row">탈것: ${(total/VEHICLE_SPEED_MPS).toFixed(1)} s <span style="color:#888;font-size:10px">@${VEHICLE_SPEED_MPS}m/s</span></div>`;
     }
     info += `<hr style="margin:6px 0;border-color:#2c2c2c">` +
             `<div class="row" style="color:#888;font-size:10px">드래그로 이동 가능</div>`;
@@ -1513,7 +1644,8 @@ function updateMeasurePanel() {
     const pts = currentMeasure.points;
     const n = pts.length;
     const total = pathLength(pts);
-    const eta = total / WALK_SPEED_MPS;
+    const etaRun = total / RUN_SPEED_MPS;
+    const etaVeh = total / VEHICLE_SPEED_MPS;
     let html = `<div class="row">포인트 수: <b>${n}</b></div>`;
     if (n >= 2) {
       const segments = [];
@@ -1528,7 +1660,8 @@ function updateMeasurePanel() {
         (segments.length > 8 ? `<div class="row" style="font-size:10px;color:#666">… +${segments.length - 8}개</div>` : "") +
         `<hr style="margin:6px 0;border-color:#2c2c2c">` +
         `<div class="row">총 거리: <b>${total.toFixed(2)} m</b></div>` +
-        `<div class="row">이동시간: <b>${eta.toFixed(1)} s</b> @${WALK_SPEED_MPS}m/s</div>`;
+        `<div class="row">달리기: <b>${etaRun.toFixed(1)} s</b> <span style="color:#888;font-size:10px">@${RUN_SPEED_MPS}m/s</span></div>` +
+        `<div class="row">탈것: <b>${etaVeh.toFixed(1)} s</b> <span style="color:#888;font-size:10px">@${VEHICLE_SPEED_MPS}m/s</span></div>`;
     } else {
       html += `<div class="row" style="color:#888">점을 더 추가하세요…</div>`;
     }
@@ -1785,6 +1918,19 @@ canvas.addEventListener("mousedown", (e) => {
     return;
   }
 
+  // Middle mouse (wheel) button — global quick distance measure.
+  // Works in any tool. preventDefault stops some browsers from entering
+  // auto-scroll mode on middle-click.
+  if (e.button === 1) {
+    e.preventDefault();
+    const { x: mx, y: my } = mouseToCell(e);
+    isQuickMeasuring  = true;
+    quickMeasureStart = { x: mx, y: my };
+    quickMeasureEnd   = { x: mx, y: my };
+    drawCursor();
+    return;
+  }
+
   const { x, y } = mouseToCell(e);
   if (!inBounds(x, y)) return;
 
@@ -1804,14 +1950,16 @@ canvas.addEventListener("mousedown", (e) => {
   // (Shift+drag detection is now handled in mousemove so the user can
   //  press Shift either before OR after the click — both work.)
 
-  // Select tool — left drag = selection / clicking a grouped zone cell = move group.
-  // All hunt-area editing (selection + group movement) lives on this tool so the
-  // pen tool stays purely for painting.
+  // Select tool — Figma-style multi-selection.
+  // Selection is highlight-only: click+drag = rect selection (replace or Shift-union),
+  // and movement is reserved for explicitly grouped (Ctrl+G) hunt cells.
+  // Selecting a hunt cell does NOT make it movable — user must Ctrl+G first.
   if (currentTool === "select" && e.button === 0) {
     const zoneGrid = state.layers["zone"];
     const pidHere = zoneGrid && zoneGrid[y] && zoneGrid[y][x];
+
+    // (1) Click on a grouped (Ctrl+G) hunt cell → move the whole group.
     if (pidHere && state.placements[pidHere] && state.placements[pidHere].groupId) {
-      // Move the whole group
       const gid = state.placements[pidHere].groupId;
       const pids = Object.keys(state.placements).filter(p => state.placements[p].groupId === gid);
       if (pids.length) {
@@ -1826,10 +1974,21 @@ canvas.addEventListener("mousedown", (e) => {
         return;
       }
     }
-    // Otherwise → rectangle selection
+
+    // (2) New rectangle selection. Shift held = union (keep existing),
+    //     no Shift = replace (clear existing first).
     isSelecting = true;
+    selectionRectIsAdditive = !!e.shiftKey;
     selectionRect = { x0: x, y0: y, x1: x, y1: y };
-    selectedPids = new Set();
+    if (selectionRectIsAdditive) {
+      // Freeze current selection so live preview can show baseline ∪ hits.
+      selectionBaseline = new Set(selectedPids);
+    } else {
+      selectedPids = new Set();
+      selectionBaseline = null;
+    }
+    updateSelectionPanel();
+    drawPlacements();   // refresh dashed outlines if selection cleared
     drawCursor();
     return;
   }
@@ -1903,15 +2062,41 @@ canvas.addEventListener("mousemove", (e) => {
   // Skip painting/measure/hover logic so brushes don't fire mid-pan.
   if (isPanning) return;
 
+  // Quick distance measure (middle mouse drag) — update endpoint + overlay
+  // then short-circuit so other tools don't react during the drag.
+  if (isQuickMeasuring) {
+    const { x: mx, y: my } = mouseToCell(e);
+    quickMeasureEnd = { x: mx, y: my };
+    drawCursor();
+    return;
+  }
+
   const { x, y } = mouseToCell(e);
 
-  // Selection rectangle in progress — update endpoint, redraw preview, skip paint.
+  // Selection rectangle in progress — update endpoint, recompute live
+  // selectedPids (baseline ∪ rect hits if additive, else rect hits), redraw.
+  // Optimized: short-circuit if the cell didn't change since last mousemove,
+  // and coalesce multiple events per frame via requestAnimationFrame so the
+  // heavy recompute+drawPlacements happens at most once per refresh.
   if (isSelecting && selectionRect && inBounds(x, y)) {
+    if (selectionLastCell && selectionLastCell.x === x && selectionLastCell.y === y) {
+      return;  // cell unchanged → mouse moved within a single cell, nothing to do
+    }
+    selectionLastCell = { x, y };
     selectionRect.x1 = x;
     selectionRect.y1 = y;
     hoverCell = { x, y };
     updateCellInfo(x, y);
-    drawCursor();
+    if (selectionPreviewRAF === null) {
+      selectionPreviewRAF = requestAnimationFrame(() => {
+        selectionPreviewRAF = null;
+        if (!isSelecting || !selectionRect) return;
+        recomputeSelectionFromRect();
+        updateSelectionPanel();
+        drawPlacements();   // refresh dashed unit outlines live
+        drawCursor();
+      });
+    }
     return;
   }
 
@@ -2036,52 +2221,46 @@ canvas.addEventListener("mouseleave", () => {
   drawCursor();
 });
 
-window.addEventListener("mouseup", () => {
+window.addEventListener("mouseup", (e) => {
   if (isPanning) {
     isPanning = false;
     panStart = null;
     // Restore cursor — keep "grab" while spacebar still held, clear otherwise.
     canvas.style.cursor = isSpaceDown ? "grab" : "";
   }
-  // Finalize select-drag selection — collect zone UNITS (origin pid per snap-unit)
-  // so each hunt area counts once regardless of how many of its 100 cells fall
-  // inside the rect.
+  // Finish quick distance measure — drop overlay regardless of which button
+  // was released (a stray right-click during the drag shouldn't strand it).
+  if (isQuickMeasuring) {
+    isQuickMeasuring  = false;
+    quickMeasureStart = null;
+    quickMeasureEnd   = null;
+    // The overlay was drawn via full-clear path (lastCursorBounds was null),
+    // so drawCursor()'s dirty-rect clear can't wipe it. Force a full clear
+    // before redrawing the normal hover cursor.
+    cursorCtx.clearRect(0, 0, cursorCanvas.width, cursorCanvas.height);
+    lastCursorBounds = null;
+    drawCursor();
+  }
+  // Finalize select-drag rectangle — selectedPids was kept live during mousemove
+  // (replace OR union depending on selectionRectIsAdditive). Just commit and
+  // tear the rect overlay down.
   if (isSelecting && selectionRect) {
-    const x0 = Math.min(selectionRect.x0, selectionRect.x1);
-    const y0 = Math.min(selectionRect.y0, selectionRect.y1);
-    const x1 = Math.max(selectionRect.x0, selectionRect.x1);
-    const y1 = Math.max(selectionRect.y0, selectionRect.y1);
-    const zoneGrid = state.layers["zone"];
-    selectedPids = new Set();
-    const seenOrigins = new Set();
-    if (zoneGrid) {
-      for (let yy = y0; yy <= y1; yy++) {
-        if (!zoneGrid[yy]) continue;
-        for (let xx = x0; xx <= x1; xx++) {
-          const pid = zoneGrid[yy][xx];
-          if (!pid) continue;
-          const p = state.placements[pid];
-          const m = p && getModule(p.module);
-          const snap = (m && m.snap) || 1;
-          const origX = Math.floor(p.x / snap) * snap;
-          const origY = Math.floor(p.y / snap) * snap;
-          const key = origX + "," + origY;
-          if (seenOrigins.has(key)) continue;
-          seenOrigins.add(key);
-          // FULL containment only — a 15×15 rect over a 10×10 zone does NOT
-          // select it; the rect must cover all 10×10 cells of the zone.
-          if (origX < x0 || origY < y0 ||
-              origX + snap - 1 > x1 || origY + snap - 1 > y1) continue;
-          const originPid = zoneGrid[origY] && zoneGrid[origY][origX];
-          if (originPid) selectedPids.add(originPid);
-        }
-      }
+    // Cancel any pending rAF — we'll do the final authoritative pass synchronously.
+    if (selectionPreviewRAF !== null) {
+      cancelAnimationFrame(selectionPreviewRAF);
+      selectionPreviewRAF = null;
     }
+    recomputeSelectionFromRect();
     isSelecting = false;
     selectionRect = null;
+    selectionBaseline = null;
+    selectionLastCell = null;
+    const wasAdditive = selectionRectIsAdditive;
+    selectionRectIsAdditive = false;
     const n = selectedPids.size;
     if (n === 0) setStatus("선택된 사냥터 공간 없음");
-    else setStatus(`${n}개 사냥터 공간 선택 · Ctrl+G로 그룹화`);
+    else setStatus(`${n}개 사냥터 공간 선택${wasAdditive ? " (추가)" : ""} · Ctrl+G로 그룹화`);
+    updateSelectionPanel();
     drawPlacements();
     drawCursor();
   }
@@ -2485,6 +2664,7 @@ document.querySelectorAll(".tool-btn").forEach(btn => {
     btn.classList.add("active");
     drawCursor();
     drawAnnotations();  // refresh selection visual (only shows in measure+move)
+    updateSelectionPanel();  // hide hunt-cell count when leaving select tool
   });
 });
 
@@ -2850,8 +3030,8 @@ window.addEventListener("keydown", (e) => {
   // Tool shortcuts — delegate to button click so cursor/panel updates apply.
   if (e.key === "1") { e.preventDefault(); document.querySelector('.tool-btn[data-tool="pen"]')?.click(); }
   if (e.key === "2") { e.preventDefault(); document.querySelector('.tool-btn[data-tool="eraser"]')?.click(); }
-  if (e.key === "3") { e.preventDefault(); document.querySelector('.tool-btn[data-tool="measure"]')?.click(); }
-  if (e.key === "4") { e.preventDefault(); document.querySelector('.tool-btn[data-tool="select"]')?.click(); }
+  if (e.key === "3") { e.preventDefault(); document.querySelector('.tool-btn[data-tool="select"]')?.click(); }
+  if (e.key === "4") { e.preventDefault(); document.querySelector('.tool-btn[data-tool="measure"]')?.click(); }
   if (e.key === "5") { e.preventDefault(); document.querySelector('.tool-btn[data-tool="eraseAll"]')?.click(); }
   // Move mode shortcuts
   if (currentTool === "measure" && measureMode === "move") {
