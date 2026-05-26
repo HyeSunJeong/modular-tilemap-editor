@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>Tilemap Editor — 630×630 (v0.4.7)</title>
+<title>Tilemap Editor — 630×630 (v0.4.8)</title>
 <style>
   * { box-sizing: border-box; }
   body {
@@ -367,10 +367,10 @@
   <h2>측정 / 영역 (Annotation)</h2>
   <div style="font-size:11px;color:#888;margin-bottom:4px">모드:</div>
   <div class="mode-row">
-    <button class="mode-btn active" data-mode="rect"   title="드래그로 사각 영역">🟦 사각</button>
+    <button class="mode-btn active" data-mode="move"   title="저장된 영역 선택+드래그로 이동">✋ 이동</button>
+    <button class="mode-btn"        data-mode="rect"   title="드래그로 사각 영역">🟦 사각</button>
     <button class="mode-btn"        data-mode="circle" title="중심→가장자리 드래그">⭕ 원</button>
     <button class="mode-btn"        data-mode="path"   title="클릭으로 점 추가">📍 경로</button>
-    <button class="mode-btn"        data-mode="move"   title="저장된 영역 선택+드래그로 이동">✋ 이동</button>
   </div>
 
   <div id="measure-info" style="margin-top:6px">
@@ -578,6 +578,7 @@ let zoom = 1.0;
 // Photoshop-style hand tool: hold Space → cursor becomes grab,
 // left-click drag moves the viewport by adjusting #main scroll.
 let isSpaceDown = false;
+let isMouseOverCanvas = false; // true while pointer is over the canvas area
 let isPanning = false;
 let panStart = null;   // {clientX, clientY, scrollLeft, scrollTop}
 
@@ -641,7 +642,7 @@ const WALK_SPEED_MPS    = 4.2;  // legacy alias (kept for back-compat)
 const RUN_SPEED_MPS     = 4.2;  // 달리기 (PC 기본): 420 cm/s
 const VEHICLE_SPEED_MPS = 7.5;  // 탈것: 750 cm/s
 
-let measureMode = "rect";    // "rect" | "circle" | "path" | "move"
+let measureMode = "move";    // "rect" | "circle" | "path" | "move"
 let currentMeasure = null;   // shape-specific data; null when idle
 let measureActive = false;   // mouse held for drag-based modes (rect/circle)
 let annotations = [];        // saved annotations [{id,type,label,color,...shape}]
@@ -1255,10 +1256,34 @@ function groupSelected() {
   drawPlacements();
 }
 
-// Ctrl+G toggle — group selected zones, OR ungroup the group under the cursor
-// if nothing is selected. One key, two intuitive behaviors.
+// Ctrl+G toggle — if selection is entirely one group → ungroup it;
+// if selection spans mixed/no groups → group them; no selection → ungroup on hover.
 function groupToggle() {
   if (selectedPids.size > 0) {
+    // Collect unique groupIds of selected origin pids.
+    const gids = new Set();
+    for (const pid of selectedPids) {
+      const p = state.placements[pid];
+      if (p && p.groupId) gids.add(p.groupId);
+    }
+    if (gids.size === 1) {
+      // All selected blocks share the same group → ungroup.
+      const gid = [...gids][0];
+      pushUndo();
+      let count = 0;
+      for (const pid in state.placements) {
+        if (state.placements[pid].groupId === gid) {
+          state.placements[pid].groupId = null;
+          count++;
+        }
+      }
+      delete groupColors[gid];
+      invalidateSelectionBBox();
+      setStatus(`그룹 ${gid} 해제 (${count}셀)`);
+      drawPlacements();
+      return;
+    }
+    // Mixed or no groups → group the selection.
     groupSelected();
     return;
   }
@@ -1266,7 +1291,7 @@ function groupToggle() {
     ungroupAt(hoverCell.x, hoverCell.y);
     return;
   }
-  setStatus("선택 도구(4)로 사냥터 공간을 선택하거나, 그룹 위에 마우스를 두고 Ctrl+G");
+  setStatus("선택 도구(1)로 사냥터 공간을 선택하거나, 그룹 위에 마우스를 두고 Ctrl+G");
 }
 
 function ungroupAt(x, y) {
@@ -1852,7 +1877,10 @@ function hitTestAnnotation(x, y) {
 function translateAnnotation(id, dx, dy) {
   const a = annotations.find(a => a.id === id);
   if (!a) return;
-  if (a.type === "rect")        { a.x += dx; a.y += dy; }
+  if (a.type === "rect") {
+    a.x += dx; a.y += dy;
+    if (a.pivotX != null) { a.pivotX += dx; a.pivotY += dy; }
+  }
   else if (a.type === "circle") { a.cx += dx; a.cy += dy; }
   else if (a.type === "path")   { a.points.forEach(p => { p.x += dx; p.y += dy; }); }
 }
@@ -1958,6 +1986,15 @@ function updateMeasurePanel() {
 }
 
 function clearMeasure() {
+  // Move mode + annotation selected → delete the selected annotation.
+  if (measureMode === "move" && selectedAnnId !== null) {
+    deleteAnnotation(selectedAnnId);
+    selectedAnnId = null;
+    isDraggingAnn = false;
+    dragLastCell = null;
+    updateMeasurePanel();
+    return;
+  }
   currentMeasure = null;
   measureActive = false;
   updateMeasurePanel();
@@ -1992,6 +2029,13 @@ function drawSingleAnnotation(c, a, isSelected) {
   if (a.type === "rect") {
     const px = a.x * CELL_PX, py = a.y * CELL_PX;
     const pw = a.w * CELL_PX, ph = a.h * CELL_PX;
+    const hasRot = a.yaw && a.pivotX != null;
+    if (hasRot) {
+      c.save();
+      c.translate(a.pivotX * CELL_PX, a.pivotY * CELL_PX);
+      c.rotate(a.yaw * Math.PI / 180);
+      c.translate(-a.pivotX * CELL_PX, -a.pivotY * CELL_PX);
+    }
     c.fillRect(px, py, pw, ph);
     c.strokeRect(px + 0.5, py + 0.5, pw - 1, ph - 1);
     if (a.label) {
@@ -2001,6 +2045,7 @@ function drawSingleAnnotation(c, a, isSelected) {
       c.fillStyle = "#000";
       c.fillText(a.label, px + M.padX, py - M.padY);
     }
+    if (hasRot) c.restore();
   } else if (a.type === "circle") {
     const cx = (a.cx + 0.5) * CELL_PX;
     const cy = (a.cy + 0.5) * CELL_PX;
@@ -2125,7 +2170,7 @@ function updateAnnotationList() {
     else if (a.type === "path")   detail = `📍 ${a.points.length}점, ${pathLength(a.points).toFixed(1)}m`;
     return (
       `<div class="ann-item">
-         <div class="ann-color" style="background:${a.color}"></div>
+         <div class="ann-color" data-color-id="${a.id}" style="background:${a.color};cursor:pointer" title="클릭으로 색상 변경"></div>
          <div class="ann-body">
            <div class="ann-label">${escapeHTML(a.label)}</div>
            <div class="ann-detail">${detail}</div>
@@ -2137,6 +2182,17 @@ function updateAnnotationList() {
   // Wire up delete buttons
   el.querySelectorAll("button[data-del-id]").forEach(btn => {
     btn.addEventListener("click", () => deleteAnnotation(btn.dataset.delId));
+  });
+  // Wire up color swatches — click cycles through ANN_COLORS.
+  el.querySelectorAll("[data-color-id]").forEach(swatch => {
+    swatch.addEventListener("click", () => {
+      const ann = annotations.find(a => a.id === swatch.dataset.colorId);
+      if (!ann) return;
+      const idx = ANN_COLORS.indexOf(ann.color);
+      ann.color = ANN_COLORS[(idx + 1) % ANN_COLORS.length];
+      drawAnnotations();
+      updateAnnotationList();
+    });
   });
 }
 
@@ -2191,6 +2247,9 @@ function updateCellInfo(x, y) {
        ? `<div style="margin-top:4px;color:#ffc850">${stack.join(" + ")}</div>`
        : `<div style="margin-top:4px;color:#666">(빈 셀)</div>`);
 }
+
+canvas.addEventListener("mouseenter", () => { isMouseOverCanvas = true; });
+canvas.addEventListener("mouseleave", () => { isMouseOverCanvas = false; });
 
 canvas.addEventListener("mousedown", (e) => {
   e.preventDefault();
@@ -2798,8 +2857,9 @@ function performToolAt(x, y, button, isDrag = false) {
   // 전체 지우개 mode treats both clicks the same — wipe non-TER/ZON layers.
   if (currentTool === "eraseAll") {
     eraseAllAt(x, y, brushSize);
-  } else if (isRight || currentTool === "eraser") {
-    // Right-click + Eraser(2) both scope to selected module's layer.
+  } else if (currentTool === "eraser" || (isRight && currentTool === "pen")) {
+    // Eraser tool OR right-click while pen tool → erase selected module's layer.
+    // Right-click on select/measure/etc. does nothing.
     eraseStamp(x, y, selectedModule, brushSize);
   } else if (currentTool === "bucket") {
     if (!isDrag) bucketFill(x, y, selectedModule);
@@ -3068,6 +3128,14 @@ document.querySelectorAll(".tool-btn").forEach(btn => {
     currentTool = btn.dataset.tool;
     document.querySelectorAll(".tool-btn").forEach(b => b.classList.remove("active"));
     btn.classList.add("active");
+    // Measure tool always starts in "move" mode.
+    if (currentTool === "measure") {
+      measureMode = "move";
+      currentMeasure = null; measureActive = false;
+      document.querySelectorAll(".mode-btn").forEach(b => b.classList.remove("active"));
+      document.querySelector(".mode-btn[data-mode='move']").classList.add("active");
+      updateMeasurePanel();
+    }
     drawCursor();
     drawAnnotations();  // refresh selection visual (only shows in measure+move)
     updateSelectionPanel();  // hide hunt-cell count when leaving select tool
@@ -3211,6 +3279,40 @@ async function quickSaveJson() {
   exportJSONLegacy(json, count);
 }
 
+// ── Save-path IndexedDB persistence ───────────────────
+// FileSystemDirectoryHandle cannot be serialized to localStorage.
+// IndexedDB natively stores structured-clone objects including FS handles.
+const _IDB_NAME = "tilemap-editor-meta", _IDB_VER = 1, _IDB_STORE = "handles";
+function _openIDB() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open(_IDB_NAME, _IDB_VER);
+    r.onupgradeneeded = e => e.target.result.createObjectStore(_IDB_STORE);
+    r.onsuccess = e => res(e.target.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+async function _saveDirHandle(handle) {
+  try {
+    const db = await _openIDB();
+    const tx = db.transaction(_IDB_STORE, "readwrite");
+    handle ? tx.objectStore(_IDB_STORE).put(handle, "saveDir")
+           : tx.objectStore(_IDB_STORE).delete("saveDir");
+    await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = rej; });
+    db.close();
+  } catch (e) { console.warn("IDB save failed:", e); }
+}
+async function _loadDirHandle() {
+  try {
+    const db = await _openIDB();
+    return await new Promise((res, rej) => {
+      const tx = db.transaction(_IDB_STORE, "readonly");
+      const req = tx.objectStore(_IDB_STORE).get("saveDir");
+      req.onsuccess = () => { db.close(); res(req.result || null); };
+      req.onerror = () => { db.close(); rej(req.error); };
+    });
+  } catch (e) { return null; }
+}
+
 // ── Save-path (directory) management ──────────────────
 async function _writeToDirectory(json, count) {
   try {
@@ -3229,6 +3331,7 @@ async function _writeToDirectory(json, count) {
   } catch (err) {
     console.warn("Directory write failed:", err);
     saveDirectoryHandle = null;
+    _saveDirHandle(null);
     updateSavePathLabel();
     setStatus("폴더 저장 실패 — 다운로드로 대체");
     exportJSONLegacy(json, count);
@@ -3244,6 +3347,7 @@ async function changeSavePath() {
     const dir = await window.showDirectoryPicker({ mode: "readwrite" });
     saveDirectoryHandle = dir;
     saveFileHandle = null;
+    await _saveDirHandle(dir);
     updateSavePathLabel();
     setStatus(`저장 경로 설정: 📁 ${dir.name}`);
   } catch (err) {
@@ -3556,7 +3660,8 @@ window.addEventListener("keydown", (e) => {
   // Spacebar → enable pan mode. Ignored when typing in an input so label
   // text can contain spaces. preventDefault stops page scroll.
   if (e.code === "Space") {
-    if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return;
+    // Allow pan when mouse is over canvas even if a sidebar input (slider) has focus.
+    if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") && !isMouseOverCanvas) return;
     e.preventDefault();
     if (!isSpaceDown) {
       isSpaceDown = true;
@@ -3578,10 +3683,16 @@ window.addEventListener("keydown", (e) => {
         const bbox = getSelectionBBox();
         if (bbox) {
           const id = "ann" + (++annCounter);
-          const color = ANN_COLORS[annotations.length % ANN_COLORS.length];
+          const color = ANN_COLORS[(annCounter - 1) % ANN_COLORS.length];
           const w = bbox.x1 - bbox.x0;
           const h = bbox.y1 - bbox.y0;
-          annotations.push({ id, type: "rect", color, label: `측정 ${annCounter}`, x: bbox.x0, y: bbox.y0, w, h });
+          // Capture yaw from first selected pid so rotated blocks produce
+          // a rotated measurement rect that matches the visual rotation.
+          const firstPid = [...selectedPids][0];
+          const yaw = (state.placements[firstPid] && state.placements[firstPid].yaw) || 0;
+          const annObj = { id, type: "rect", color, label: `측정 ${annCounter}`, x: bbox.x0, y: bbox.y0, w, h };
+          if (yaw) { annObj.yaw = yaw; annObj.pivotX = bbox.cx; annObj.pivotY = bbox.cy; }
+          annotations.push(annObj);
           drawAnnotations();
           updateAnnotationList();
           setStatus(`측정 사각 생성: ${w}×${h} 셀`);
@@ -3688,6 +3799,18 @@ updateMeasurePanel();
 updateAnnotationList();
 updateCellInfo(-1, -1);
 setStatus("630×630 그리드 · 휠로 줌, 좌측 팔레트에서 모듈 선택");
+
+// Restore previously saved directory handle from IndexedDB (non-blocking).
+_loadDirHandle().then(handle => {
+  if (!handle) return;
+  handle.queryPermission({ mode: "readwrite" }).then(perm => {
+    if (perm === "granted") {
+      saveDirectoryHandle = handle;
+      updateSavePathLabel();
+      setStatus(`저장 경로 복원: 📁 ${handle.name}`);
+    }
+  }).catch(() => {});
+}).catch(() => {});
 
 // Offer to restore previous autosaved state (covers tab-close / page-crash)
 setTimeout(() => {
