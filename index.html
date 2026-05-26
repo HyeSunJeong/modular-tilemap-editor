@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>Tilemap Editor — 630×630 (v0.4.5)</title>
+<title>Tilemap Editor — 630×630 (v0.4.7)</title>
 <style>
   * { box-sizing: border-box; }
   body {
@@ -244,9 +244,9 @@
 
   <h2>도구</h2>
   <div class="tools">
-    <button class="tool-btn active" data-tool="pen">펜 (1)</button>
-    <button class="tool-btn" data-tool="eraser">지우개 (2)</button>
-    <button class="tool-btn" data-tool="select">선택 (3)</button>
+    <button class="tool-btn active" data-tool="select">선택 (1)</button>
+    <button class="tool-btn" data-tool="pen">펜 (2)</button>
+    <button class="tool-btn" data-tool="eraser">지우개 (3)</button>
     <button class="tool-btn" data-tool="measure">측정 (4)</button>
   </div>
   <div class="tools" style="margin-top:4px">
@@ -313,7 +313,7 @@
     아래→위: <b>Base</b> → <b>Elevation</b> → <b>Environment</b><br>
     같은 셀에서 레이어가 다른 모듈은 공존<br>
     <b style="color:#bbb">지우개 동작</b><br>
-    <kbd>지우개(2)</kbd> 선택 모듈 레이어만 지움<br>
+    <kbd>지우개(3)</kbd> 선택 모듈 레이어만 지움<br>
     (예: ELV 선택 시 base는 절대 안 지워짐)<br>
     <kbd>전체 지우개(5)</kbd> TER·ZON 제외 모두 지움<br>
     <hr>
@@ -322,11 +322,11 @@
     <kbd>Shift</kbd>+좌클릭+드래그 직선 (가로/세로)<br>
     <kbd>Alt</kbd>+클릭 스포이드 (모듈 빠른 선택)<br>
     <kbd>Ctrl+S</kbd> 저장 (첫 사용 시 경로 지정)<br>
-    <kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd>/<kbd>4</kbd>/<kbd>5</kbd> 펜/지우개/선택/측정/전체지우개<br>
-    선택(3) + 드래그: 사냥터 공간 선택 (강조 표시)<br>
-    선택(3) + Shift+드래그: 선택 영역 추가 (Figma식)<br>
+    <kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd>/<kbd>4</kbd>/<kbd>5</kbd> 선택/펜/지우개/측정/전체지우개<br>
+    선택(1) + 드래그: 사냥터 공간 선택 (강조 표시)<br>
+    선택(1) + Shift+드래그: 선택 영역 추가 (Figma식)<br>
     <kbd>Ctrl+G</kbd>로 그룹화한 뒤에만 이동 가능<br>
-    선택(3) + 그룹 클릭드래그: 그룹 이동<br>
+    선택(1) + 그룹 클릭드래그: 그룹 이동<br>
     <kbd>휠 클릭</kbd>+드래그: 거리 빠른 측정 (모든 도구)<br>
     <kbd>Ctrl+G</kbd> 그룹화 / 해제 (토글)<br>
     <kbd>Ctrl+Z</kbd>/<kbd>Y</kbd> 되돌리기<br>
@@ -445,7 +445,7 @@ const MODULES = [
   { id: "TRN_Base_Grass",    name: "잔디",            color: "#4a9a4a", footprint: [1,1], layer: "base" },
   { id: "TRN_Base_Dirt",     name: "흙",              color: "#7a5a3a", footprint: [1,1], layer: "base" },
   { id: "TRN_Base_Stone",    name: "돌바닥",          color: "#9a9a9a", footprint: [1,1], layer: "base" },
-  { id: "TRN_Base_Water",    name: "물 (얕은)",       color: "#4a9bce", footprint: [1,1], layer: "base" },
+  { id: "TRN_Base_Water",    name: "물",              color: "#4a9bce", footprint: [1,1], layer: "water" },
   // Environment — props on top of base. All 1×1 now; use brush size to fill areas.
   { id: "ENV_Nature_01",     name: "자연물 01",       color: "#8DAA86", footprint: [1,1], layer: "environment" },
   { id: "ENV_Nature_02",     name: "자연물 02",       color: "#636363", footprint: [1,1], layer: "environment" },
@@ -465,6 +465,15 @@ const MODULES = [
 
 // O(1) module lookup — built once from the MODULES array.
 const MODULE_MAP = new Map(MODULES.map(m => [m.id, m]));
+
+// Precompute hot-path flags on each module so drawPlacements avoids redoing
+// the same (m.snap && m.snap > 1) and (m.pattern === "checker") checks for
+// every cell every frame. For 10k cells that's 30k+ ops saved per redraw.
+MODULES.forEach(m => {
+  m._snap      = (m.snap && m.snap > 1) ? m.snap : 1;
+  m._isChecker = m.pattern === "checker" && !!m.color2;
+  m._isMulti   = m.footprint[0] > 1 || m.footprint[1] > 1;
+});
 
 // v1 → v2 ID migration
 const LEGACY_ID_MAP = {
@@ -489,7 +498,7 @@ const LEGACY_ID_MAP = {
 // - road: paths/streets above environment but under zone markers
 // - zone: design markers (hunt areas) rendered topmost so they're visible
 //   on top of mountains/buildings/roads.
-const LAYERS = ["territory", "base", "elevation", "environment", "road", "zone"];
+const LAYERS = ["territory", "base", "elevation", "environment", "water", "road", "zone"];
 
 function makeEmptyLayers() {
   const o = {};
@@ -502,7 +511,7 @@ let state = {
   placements: {},              // pid -> { module, x, y, z, layer, footprint, yaw }
 };
 let selectedModule = "TRN_Base_Grass";
-let currentTool = "pen";
+let currentTool = "select";
 let brushSize = 1;             // N×N for pen/eraser when module is 1×1
 let isDrawing = false;
 let drawingButton = 0;
@@ -699,26 +708,36 @@ function stackAt(x, y) {
 // ═══════════════════════════════════════════════════════
 // Undo / Redo
 // ═══════════════════════════════════════════════════════
+// Shallow clone of state.placements — much faster than structuredClone since
+// each placement is a flat object (no nested arrays/objects we need to deep-copy).
+// On 10k cells this is ~10× faster, which matters because every paint stroke
+// calls pushUndo→snapshot.
+function clonePlacements(src) {
+  const out = {};
+  for (const pid in src) out[pid] = Object.assign({}, src[pid]);
+  return out;
+}
 function snapshot() {
   const layers = {};
   LAYERS.forEach(L => layers[L] = state.layers[L].map(r => r.slice()));
   return {
     layers,
-    placements: structuredClone(state.placements),
+    placements: clonePlacements(state.placements),
     counter: placementCounter,
     groupCounter,
-    groupColors: { ...groupColors },
+    groupColors: Object.assign({}, groupColors),
   };
 }
 function restore(snap) {
   state.layers = {};
   LAYERS.forEach(L => state.layers[L] = snap.layers[L].map(r => r.slice()));
-  state.placements = structuredClone(snap.placements);
+  state.placements = clonePlacements(snap.placements);
   placementCounter = snap.counter;
   if (snap.groupCounter !== undefined) groupCounter = snap.groupCounter;
-  if (snap.groupColors !== undefined) groupColors = { ...snap.groupColors };
+  if (snap.groupColors !== undefined) groupColors = Object.assign({}, snap.groupColors);
   // Stale selections after restore are confusing — clear them.
   selectedPids = new Set();
+  invalidateSelectionBBox();
   if (typeof updateSelectionPanel === "function") updateSelectionPanel();
 }
 function pushUndo() {
@@ -748,20 +767,35 @@ function redoFn() {
 // Returns the selection bounding box in cell coords, or null when nothing is
 // selected. cx/cy are the geometric center (used as the rotation pivot for
 // multi-block frame rotation).
+// Cached selection bbox. Called multiple times per mousemove (hitTest +
+// drawCursor); explicit invalidation at every selection or position change
+// keeps the cache cheap. `invalidateSelectionBBox()` is called from each
+// mutation site (drawPlacements, applyGroupTranslate, selection reassigns).
+let _bboxCache = null;
+let _bboxValid = false;
+function invalidateSelectionBBox() { _bboxValid = false; }
 function getSelectionBBox() {
-  if (selectedPids.size === 0) return null;
+  if (_bboxValid) return _bboxCache;
+  if (selectedPids.size === 0) {
+    _bboxCache = null; _bboxValid = true;
+    return null;
+  }
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  const placements = state.placements;
   for (const pid of selectedPids) {
-    const p = state.placements[pid]; if (!p) continue;
-    const m = getModule(p.module);
-    const s = (m && m.snap) || 1;
+    const p = placements[pid]; if (!p) continue;
+    const m = MODULE_MAP.get(p.module);
+    const s = (m && m._snap) || 1;
     if (p.x < x0) x0 = p.x;
     if (p.y < y0) y0 = p.y;
     if (p.x + s > x1) x1 = p.x + s;
     if (p.y + s > y1) y1 = p.y + s;
   }
-  if (!isFinite(x0)) return null;
-  return { x0, y0, x1, y1, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2 };
+  _bboxCache = isFinite(x0)
+    ? { x0, y0, x1, y1, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2 }
+    : null;
+  _bboxValid = true;
+  return _bboxCache;
 }
 
 // Returns 4 handle centers (canvas px) at TL/TR/BL/BR, pushed diagonally
@@ -784,7 +818,7 @@ function hitTestRotationHandle(e) {
   if (currentTool !== "select" || !hasGroupedSelection()) return null;
   if (isSelecting || isDraggingGroup || isRotating) return null;
   const bbox = getSelectionBBox(); if (!bbox) return null;
-  const r = canvas.getBoundingClientRect();
+  const r = getCanvasRect();
   const mx = (e.clientX - r.left) / zoom;
   const my = (e.clientY - r.top)  / zoom;
   const handles = rotationHandlePositionsPx(bbox);
@@ -1040,28 +1074,27 @@ function drawPlacements() {
   // when most of the canvas is empty.
   const byLayer = {};
   for (const L of LAYERS) byLayer[L] = [];
-  for (const pid in state.placements) {
-    const p = state.placements[pid];
+  const placements = state.placements;
+  for (const pid in placements) {
+    const p = placements[pid];
     const bucket = byLayer[p.layer];
     if (bucket) bucket.push(pid);
   }
 
-  // Per-draw module cache — avoids repeated MODULES.find() lookups for every
-  // placement (e.g. 10k cells × find = expensive).
-  const modCache = {};
-  const getM = (id) => (id in modCache)
-    ? modCache[id]
-    : (modCache[id] = MODULES.find(m => m.id === id) || null);
+  // Hoist hot lookups out of the inner loop (MODULE_MAP.get is O(1)).
+  const modMap = MODULE_MAP;
+  const selSet = selectedPids;
 
   for (const L of LAYERS) {
     const bucket = byLayer[L];
-    for (let i = 0; i < bucket.length; i++) {
+    const bLen = bucket.length;
+    for (let i = 0; i < bLen; i++) {
       const pid = bucket[i];
-      const p = state.placements[pid];
-      const m = getM(p.module);
+      const p = placements[pid];
+      const m = modMap.get(p.module);
       if (!m) continue;
       const x = p.x, y = p.y;
-      const snap = (m.snap && m.snap > 1) ? m.snap : 1;
+      const snap = m._snap;
       const isUnitOrigin = (snap === 1) || (x % snap === 0 && y % snap === 0);
 
       // ── Rotation path ── When the block has a non-zero yaw, render the
@@ -1072,7 +1105,7 @@ function drawPlacements() {
         if (!isUnitOrigin) continue;  // non-origin cells of a rotated unit
         // Checker parity (yaw-rotated blocks use the same per-snap-unit color).
         let pColor = m.color;
-        if (m.pattern === "checker" && m.color2) {
+        if (m._isChecker) {
           const parity = (Math.floor(x / snap) + Math.floor(y / snap)) % 2;
           pColor = (parity === 0) ? m.color : m.color2;
         }
@@ -1092,23 +1125,26 @@ function drawPlacements() {
         ctx.translate(blockCx - pivotPx, blockCy - pivotPy);
         ctx.fillStyle = pColor;
         ctx.fillRect(-outlinePx / 2, -outlinePx / 2, outlinePx, outlinePx);
-        // Group / selection outlines inside the same transform so they follow the rotation.
-        if (p.groupId && groupColors[p.groupId]) {
-          ctx.save();
-          ctx.globalAlpha = 0.45;
-          ctx.strokeStyle = groupColors[p.groupId];
-          ctx.lineWidth = 1;
-          ctx.setLineDash([2, 3]);
-          ctx.strokeRect(-outlinePx / 2 + 1, -outlinePx / 2 + 1, outlinePx - 2, outlinePx - 2);
-          ctx.setLineDash([]);
-          ctx.restore();
-        }
-        if (selectedPids.has(pid)) {
+        // Selection outline inside the rotation transform.
+        if (selSet.has(pid)) {
           ctx.strokeStyle = "#ffd700";
           ctx.lineWidth = 2;
           ctx.setLineDash([6, 4]);
           ctx.strokeRect(-outlinePx / 2 + 1, -outlinePx / 2 + 1, outlinePx - 2, outlinePx - 2);
           ctx.setLineDash([]);
+        }
+        // Group TL bracket — inside rotation transform so it rotates with the block.
+        if (p.groupId && groupColors[p.groupId]) {
+          const half = outlinePx / 2;
+          const bLen = Math.max(3, Math.min(7, outlinePx / 8));
+          ctx.globalAlpha = 0.75;
+          ctx.strokeStyle = groupColors[p.groupId];
+          ctx.lineWidth = 2;
+          ctx.lineCap = "square";
+          ctx.setLineDash([]);
+          ctx.beginPath();
+          ctx.moveTo(-half + bLen, -half); ctx.lineTo(-half, -half); ctx.lineTo(-half, -half + bLen);
+          ctx.stroke();
         }
         ctx.restore();
         continue;
@@ -1117,29 +1153,35 @@ function drawPlacements() {
       // ── Fast axis-aligned path (unchanged from pre-v0.4.4) ──
       // Checker pattern fill — per snap-unit parity (zone style) or per-cell.
       let pColor = m.color;
-      if (m.pattern === "checker" && m.color2) {
-        const parity = (m.snap && m.snap > 1)
-          ? (Math.floor(x / m.snap) + Math.floor(y / m.snap)) % 2
+      if (m._isChecker) {
+        const parity = (snap > 1)
+          ? (Math.floor(x / snap) + Math.floor(y / snap)) % 2
           : (x + y) % 2;
         pColor = (parity === 0) ? m.color : m.color2;
       }
       ctx.fillStyle = pColor;
       ctx.fillRect(x * CELL_PX, y * CELL_PX, CELL_PX, CELL_PX);
 
-      // Group / selection outlines — one outline per snap unit, drawn at origin.
+      // Per-block overlays (selection outline + group brackets) drawn at snap-unit origin.
       if (isUnitOrigin) {
-        const outlinePx = snap * CELL_PX;
+        // Group TL bracket — top-left corner only, per block.
         if (p.groupId && groupColors[p.groupId]) {
+          const bx = x * CELL_PX, by = y * CELL_PX;
+          const bw = snap * CELL_PX;
+          const bLen = Math.max(3, Math.min(7, bw / 8));
           ctx.save();
-          ctx.globalAlpha = 0.45;
+          ctx.globalAlpha = 0.75;
           ctx.strokeStyle = groupColors[p.groupId];
-          ctx.lineWidth = 1;
-          ctx.setLineDash([2, 3]);
-          ctx.strokeRect(x * CELL_PX + 1, y * CELL_PX + 1, outlinePx - 2, outlinePx - 2);
+          ctx.lineWidth = 2;
+          ctx.lineCap = "square";
           ctx.setLineDash([]);
+          ctx.beginPath();
+          ctx.moveTo(bx + bLen, by); ctx.lineTo(bx, by); ctx.lineTo(bx, by + bLen);
+          ctx.stroke();
           ctx.restore();
         }
-        if (selectedPids.has(pid)) {
+        if (selSet.has(pid)) {
+          const outlinePx = snap * CELL_PX;
           ctx.strokeStyle = "#ffd700";
           ctx.lineWidth = 2;
           ctx.setLineDash([6, 4]);
@@ -1150,9 +1192,26 @@ function drawPlacements() {
     }
   }
 
+  // bbox cache may go stale if anything moved/added/removed between frames.
+  // Invalidating here ensures the next mousemove gets a fresh compute.
+  invalidateSelectionBBox();
   // Trigger autosave 3 sec after the last redraw (drawPlacements fires on any
   // paint/erase/group/undo, so this covers nearly every meaningful change).
   if (typeof scheduleAutosave === "function") scheduleAutosave();
+}
+
+// Coalesce drawPlacements calls inside the same frame. Mousemove can fire
+// 60-120× per second and each event may trigger paint+drawPlacements; without
+// this, we'd redraw the whole canvas multiple times per frame. Caller-side
+// usage: replace `drawPlacements()` with `requestDrawPlacements()` at hot
+// callers (paint drag, group drag, rotation, selection preview).
+let _drawPlacementsRAF = 0;
+function requestDrawPlacements() {
+  if (_drawPlacementsRAF) return;
+  _drawPlacementsRAF = requestAnimationFrame(() => {
+    _drawPlacementsRAF = 0;
+    drawPlacements();
+  });
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1340,7 +1399,8 @@ function applyGroupTranslate(dx, dy) {
     zoneGrid[p.y][p.x] = pid;
   });
 
-  drawPlacements();
+  invalidateSelectionBBox();  // positions changed → bbox cache stale
+  requestDrawPlacements();
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1412,7 +1472,7 @@ function eraseStamp(x, y, moduleId, size) {
 // N×N brush region. Lets designers wipe a build/road/env area cleanly without
 // flipping palette selection per layer; territory & hunt-area survive so the
 // underlying region markers stay intact (re-use is the common case).
-const ERASE_ALL_LAYERS = ["base", "elevation", "environment", "road"];
+const ERASE_ALL_LAYERS = ["base", "elevation", "environment", "water", "road"];
 function eraseAllAt(x, y, size) {
   const { x0, y0 } = brushBounds(x, y, size);
   for (let dy = 0; dy < size; dy++) {
@@ -2085,25 +2145,44 @@ function escapeHTML(s) {
 // ═══════════════════════════════════════════════════════
 // Mouse
 // ═══════════════════════════════════════════════════════
+// Canvas client rect cache — getBoundingClientRect can trigger layout, so we
+// avoid calling it 60+ times per second during mousemove. Invalidated on
+// scroll/resize and on any zoom/canvas-size change (see invalidateCanvasRect
+// in initCanvasSize / panel resize).
+let _canvasRect = null;
+function getCanvasRect() {
+  if (_canvasRect) return _canvasRect;
+  _canvasRect = canvas.getBoundingClientRect();
+  return _canvasRect;
+}
+function invalidateCanvasRect() { _canvasRect = null; }
+window.addEventListener("scroll", invalidateCanvasRect, true);
+window.addEventListener("resize", invalidateCanvasRect);
+
 function mouseToCell(e) {
   // getBoundingClientRect already reflects zoomed CSS size,
   // so we divide by (zoomed cell size) = CELL_PX * zoom.
-  const r = canvas.getBoundingClientRect();
+  const r = getCanvasRect();
   return {
     x: Math.floor((e.clientX - r.left) / (CELL_PX * zoom)),
     y: Math.floor((e.clientY - r.top) / (CELL_PX * zoom)),
   };
 }
 
+// Skip identical updates so mousemove hover within one cell doesn't trash
+// the panel's innerHTML 60+ times per second.
+let _cellInfoLastX = NaN, _cellInfoLastY = NaN, _cellInfoEl = null;
 function updateCellInfo(x, y) {
-  const el = document.getElementById("cell-info");
-  if (!el) return;
+  if (x === _cellInfoLastX && y === _cellInfoLastY) return;
+  _cellInfoLastX = x; _cellInfoLastY = y;
+  if (!_cellInfoEl) _cellInfoEl = document.getElementById("cell-info");
+  if (!_cellInfoEl) return;
   if (!inBounds(x, y)) {
-    el.innerHTML = `<span class="hint" style="color:#666;font-style:italic">캔버스 위로 마우스 이동</span>`;
+    _cellInfoEl.innerHTML = `<span class="hint" style="color:#666;font-style:italic">캔버스 위로 마우스 이동</span>`;
     return;
   }
   const stack = stackAt(x, y);
-  el.innerHTML =
+  _cellInfoEl.innerHTML =
     `<div>좌표: (${x}, ${y})</div>` +
     `<div>월드: (${x}m, ${GRID_H - y - 1}m)</div>` +
     (stack.length
@@ -2210,11 +2289,29 @@ canvas.addEventListener("mousedown", (e) => {
     const zoneGrid = state.layers["zone"];
     const pidHere = zoneGrid && zoneGrid[y] && zoneGrid[y][x];
 
-    // (1) Click on a grouped (Ctrl+G) hunt cell → move the whole group.
+    // (1) Click on a grouped (Ctrl+G) hunt cell → select the group AND
+    //     start drag. Selection is updated first so rotation handles
+    //     (↻) and yellow outlines appear immediately on mousedown.
     if (pidHere && state.placements[pidHere] && state.placements[pidHere].groupId) {
       const gid = state.placements[pidHere].groupId;
       const pids = Object.keys(state.placements).filter(p => state.placements[p].groupId === gid);
       if (pids.length) {
+        // Populate selectedPids with only the origin cells of this group
+        // (same convention as marquee selection — one pid per snap unit).
+        const newSel = new Set();
+        for (const pid of pids) {
+          const pl = state.placements[pid];
+          const mm = getModule(pl.module);
+          const sn = (mm && mm.snap && mm.snap > 1) ? mm.snap : 1;
+          if (pl.x % sn === 0 && pl.y % sn === 0) newSel.add(pid);
+        }
+        if (e.shiftKey) {
+          for (const pid of newSel) selectedPids.add(pid);
+        } else {
+          selectedPids = newSel;
+        }
+        updateSelectionPanel();
+
         pushUndo();
         isDraggingGroup = true;
         dragGroupPids = pids;
@@ -2224,9 +2321,11 @@ canvas.addEventListener("mousedown", (e) => {
           const pl = state.placements[p];
           dragGroupOrigPositions[p] = {
             x: pl.x, y: pl.y,
-            pivotX: pl.pivotX, pivotY: pl.pivotY,  // preserve rotation pivot through the translation
+            pivotX: pl.pivotX, pivotY: pl.pivotY,
           };
         });
+        drawPlacements();  // yellow dashed outlines
+        drawCursor();      // rotation handles
         return;
       }
     }
@@ -2333,7 +2432,7 @@ canvas.addEventListener("mousemove", (e) => {
     // Track cursor cell for the live guide-line label in drawCursor.
     const cell = mouseToCell(e);
     if (inBounds(cell.x, cell.y)) hoverCell = cell;
-    drawPlacements();
+    requestDrawPlacements();
     drawCursor();
     return;
   }
@@ -2465,7 +2564,7 @@ canvas.addEventListener("mousemove", (e) => {
       if (linePreviewSnapshot) {
         _restoreLinePreviewSnapshot();
         linePreviewSnapshot = null;
-        drawPlacements();
+        requestDrawPlacements();
       }
       isLineMode = false;
       lineStart  = null;
@@ -2485,7 +2584,7 @@ canvas.addEventListener("mousemove", (e) => {
         forEachLineCell(lineStart.x, lineStart.y, lineEnd.x, lineEnd.y, (cx, cy) => {
           if (inBounds(cx, cy)) performToolAt(cx, cy, lineButton, true);
         });
-        drawPlacements();
+        requestDrawPlacements();
       }
     }
     drawCursor();   // redraws dashed line overlay + brush hover at snapped end
@@ -2500,7 +2599,7 @@ canvas.addEventListener("mousemove", (e) => {
   performToolAt(x, y, drawingButton, true);
   lastDrawCell = { x, y };
   lastPaintAnchor = { x, y };   // keep anchor at most recent painted cell
-  drawPlacements();
+  requestDrawPlacements();
 });
 
 canvas.addEventListener("mouseleave", () => {
@@ -2572,6 +2671,8 @@ window.addEventListener("mouseup", (e) => {
     dragGroupStartCell = null;
     dragGroupOrigPositions = null;
     setStatus("그룹 이동 완료");
+    drawPlacements();  // refresh yellow outlines at new position
+    drawCursor();      // redraw rotation handles at new bbox position
   }
   // Commit Shift+drag line — restore snapshot base + Bresenham-walk so the
   // final result is authoritative (identical whether or not mousemove preview
@@ -2748,12 +2849,13 @@ function makeSwatchStyle(m) {
 function buildPalette() {
   const el = document.getElementById("palette");
   el.innerHTML = "";
-  const order = ["territory", "base", "elevation", "environment", "road", "zone"];
+  const order = ["territory", "base", "elevation", "environment", "water", "road", "zone"];
   const labels = {
     territory:   "영토 (TER)",
     base:        "Base 지형 (TRN)",
     elevation:   "Elevation (ELV)",
     environment: "Environment / Building",
+    water:       "Water (물)",
     road:        "Road (도로)",
     zone:        "Zone (사냥터 공간)",
   };
@@ -2874,6 +2976,7 @@ function applyZoom(newZoom, clientX, clientY) {
   const dy = (newRect.top  + worldY * zoom) - clientY;
   main.scrollLeft += dx;
   main.scrollTop  += dy;
+  invalidateCanvasRect();  // canvas position/size changed — rect cache is stale
 
   // Update zoom display
   const zEl = document.getElementById("zoom-val");
@@ -3000,13 +3103,19 @@ function buildTilemapJson() {
       (a.z||0) - (b.z||0) ||
       a.y - b.y || a.x - b.x
     )
-    .map(p => ({
-      module: p.module,
-      x: p.x, y: p.y, z: p.z || 0,
-      layer: p.layer,
-      footprint: p.footprint,
-      yaw: p.yaw || 0,
-    }));
+    .map(p => {
+      const entry = {
+        module: p.module,
+        x: p.x, y: p.y, z: p.z || 0,
+        layer: p.layer,
+        footprint: p.footprint,
+        yaw: p.yaw || 0,
+        groupId: p.groupId || null,
+      };
+      if (p.pivotX != null) entry.pivotX = p.pivotX;
+      if (p.pivotY != null) entry.pivotY = p.pivotY;
+      return entry;
+    });
   const data = {
     version: SCHEMA_VERSION,
     size: [GRID_W, GRID_H],
@@ -3019,6 +3128,13 @@ function buildTilemapJson() {
     placements,
     // v0.3.1: planning annotations (zones, points, paths) — separate from placements
     annotations: annotations.map(a => ({ ...a })),
+    // Underlay image + display settings (base64 PNG) so reference traces survive round-trip.
+    underlay: underlayImage ? {
+      dataURL:  underlayToDataURL(),
+      visible:  underlayVisible,
+      opacity:  underlayOpacity,
+      alignTop: underlayAlignTop,
+    } : null,
   };
   return { json: JSON.stringify(data, null, 2), count: placements.length };
 }
@@ -3091,11 +3207,16 @@ const AUTOSAVE_KEY = "tilemapAutosave_v1";
 let autosaveTimer = null;
 
 function serializeStateAsJson() {
-  const placements = Object.values(state.placements).map(p => ({
-    module: p.module, x: p.x, y: p.y, z: p.z || 0,
-    layer: p.layer, footprint: p.footprint, yaw: p.yaw || 0,
-    groupId: p.groupId || null,
-  }));
+  const placements = Object.values(state.placements).map(p => {
+    const entry = {
+      module: p.module, x: p.x, y: p.y, z: p.z || 0,
+      layer: p.layer, footprint: p.footprint, yaw: p.yaw || 0,
+      groupId: p.groupId || null,
+    };
+    if (p.pivotX != null) entry.pivotX = p.pivotX;
+    if (p.pivotY != null) entry.pivotY = p.pivotY;
+    return entry;
+  });
   return JSON.stringify({
     version: SCHEMA_VERSION,
     size: [GRID_W, GRID_H],
@@ -3104,6 +3225,12 @@ function serializeStateAsJson() {
     placements,
     annotations: annotations.map(a => ({ ...a })),
     groupColors: { ...groupColors },
+    underlay: underlayImage ? {
+      dataURL:  underlayToDataURL(),
+      visible:  underlayVisible,
+      opacity:  underlayOpacity,
+      alignTop: underlayAlignTop,
+    } : null,
     autosavedAt: new Date().toISOString(),
   });
 }
@@ -3131,16 +3258,57 @@ function importJSON(text) {
     state.layers = makeEmptyLayers();
     state.placements = {};
     placementCounter = 0;
+    groupColors  = {};
+    groupCounter = 0;
     let n = 0, migrated = 0, skipped = 0;
-    // placeModule auto-routes each placement into the correct layer
-    // based on the module's `layer` property — so a flat placements list
-    // restores the layered structure naturally.
+
+    // Autosave stores groupColors + counter; restore them first so outlines
+    // render with correct colours even before we process placements.
+    if (data.groupColors && typeof data.groupColors === "object") {
+      groupColors = { ...data.groupColors };
+      for (const gid of Object.keys(groupColors)) {
+        const num = parseInt(gid.replace(/^\D+/, ""), 10);
+        if (!isNaN(num) && num > groupCounter) groupCounter = num;
+      }
+    }
+
+    // ── Per-cell load ─────────────────────────────────────────────────
+    // JSON stores one entry per cell (state.placements is per-cell). Loading
+    // via placeCell creates exactly 1 grid cell per entry — this preserves
+    // the original painted shape exactly, including smeared/overlapping road
+    // strokes. Using placeModule here would re-stamp the full footprint per
+    // cell entry, causing roads to balloon beyond their original extent.
+
     for (const p of data.placements) {
       let modId = p.module;
       if (LEGACY_ID_MAP[modId]) { modId = LEGACY_ID_MAP[modId]; migrated++; }
-      if (!getModule(modId)) { skipped++; continue; }
+      const m = getModule(modId);
+      if (!m) { skipped++; continue; }
+      if (!inBounds(p.x, p.y)) { skipped++; continue; }
+
       const z = p.z || 0;
-      if (placeModule(modId, p.x, p.y, z)) n++;
+      placeCell(modId, p.x, p.y, z, m.layer);
+      n++;
+
+      // Apply per-cell metadata (yaw, pivotX, pivotY, groupId) directly.
+      const grid = state.layers[m.layer];
+      const cellPid = grid && grid[p.y] && grid[p.y][p.x];
+      if (cellPid && state.placements[cellPid]) {
+        if (p.yaw)            state.placements[cellPid].yaw    = p.yaw;
+        if (p.pivotX != null) state.placements[cellPid].pivotX = p.pivotX;
+        if (p.pivotY != null) state.placements[cellPid].pivotY = p.pivotY;
+        if (p.groupId)        state.placements[cellPid].groupId = p.groupId;
+      }
+      // Rebuild groupColors entry if not already present (public JSON export
+      // doesn't include groupColors, so we reconstruct from the pool by gid).
+      const gid = p.groupId || null;
+      if (gid && !groupColors[gid]) {
+        const num = parseInt(gid.replace(/^\D+/, ""), 10);
+        if (!isNaN(num)) {
+          groupColors[gid] = GROUP_COLOR_POOL[(num - 1) % GROUP_COLOR_POOL.length];
+          if (num > groupCounter) groupCounter = num;
+        }
+      }
     }
 
     // Load annotations (v0.3.1+); missing field is fine for older JSONs
@@ -3154,6 +3322,9 @@ function importJSON(text) {
         if (!isNaN(num) && num > annCounter) annCounter = num;
       }
     }
+    // Restore underlay (base64 PNG + display settings). Only touches state
+    // when the field is present, so older JSONs leave the current underlay alone.
+    if (data.underlay !== undefined) restoreUnderlayFromData(data.underlay);
     currentMeasure = null;
     drawAnnotations();
     updateAnnotationList();
@@ -3183,6 +3354,46 @@ document.getElementById("file-input").addEventListener("change", (e) => {
 // ═══════════════════════════════════════════════════════
 // PNG underlay
 // ═══════════════════════════════════════════════════════
+// Convert the loaded underlay Image to a base64 data URL so it can ride
+// along inside the tilemap JSON. Round-trips perfectly via dataURLToImage.
+function underlayToDataURL() {
+  if (!underlayImage) return null;
+  try {
+    const c = document.createElement("canvas");
+    c.width  = underlayImage.naturalWidth;
+    c.height = underlayImage.naturalHeight;
+    c.getContext("2d").drawImage(underlayImage, 0, 0);
+    return c.toDataURL("image/png");
+  } catch (e) {
+    return null;  // cross-origin or oversized image; skip silently
+  }
+}
+
+// Restore underlay (image + visibility/opacity/alignment) from a saved entry.
+// Updates the matching UI controls so the side panel reflects what's loaded.
+function restoreUnderlayFromData(u) {
+  if (underlayImage && underlayImage.dataset_url) URL.revokeObjectURL(underlayImage.dataset_url);
+  if (!u || !u.dataURL) { underlayImage = null; drawUnderlay(); return; }
+  const img = new Image();
+  img.onload = () => {
+    underlayImage    = img;
+    underlayVisible  = u.visible !== false;
+    underlayOpacity  = (typeof u.opacity === "number") ? u.opacity : 0.5;
+    underlayAlignTop = !!u.alignTop;
+    const tog   = document.getElementById("img-toggle");
+    const align = document.getElementById("img-align-top");
+    const op    = document.getElementById("img-opacity");
+    const opVal = document.getElementById("opacity-val");
+    if (tog)   tog.checked   = underlayVisible;
+    if (align) align.checked = underlayAlignTop;
+    if (op)    op.value      = Math.round(underlayOpacity * 100);
+    if (opVal) opVal.textContent = Math.round(underlayOpacity * 100) + "%";
+    drawUnderlay();
+  };
+  img.onerror = () => setStatus("저장된 밑그림 복원 실패");
+  img.src = u.dataURL;
+}
+
 function loadUnderlayImage(file) {
   const url = URL.createObjectURL(file);
   const img = new Image();
@@ -3303,6 +3514,22 @@ window.addEventListener("keydown", (e) => {
     if (e.key === "z" || e.key === "Z") { e.preventDefault(); undo(); }
     if (e.key === "y" || e.key === "Y") { e.preventDefault(); redoFn(); }
     if (e.key === "g" || e.key === "G") { e.preventDefault(); groupToggle(); }
+    if (e.key === "f" || e.key === "F") {
+      e.preventDefault();
+      if (selectedPids.size > 0) {
+        const bbox = getSelectionBBox();
+        if (bbox) {
+          const id = "ann" + (++annCounter);
+          const color = ANN_COLORS[annotations.length % ANN_COLORS.length];
+          const w = bbox.x1 - bbox.x0;
+          const h = bbox.y1 - bbox.y0;
+          annotations.push({ id, type: "rect", color, label: `측정 ${annCounter}`, x: bbox.x0, y: bbox.y0, w, h });
+          drawAnnotations();
+          updateAnnotationList();
+          setStatus(`측정 사각 생성: ${w}×${h} 셀`);
+        }
+      }
+    }
     return;
   }
   if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return;
@@ -3329,9 +3556,9 @@ window.addEventListener("keydown", (e) => {
   }
   if (e.key === "0") { e.preventDefault(); applyZoom(1.0); }
   // Tool shortcuts — delegate to button click so cursor/panel updates apply.
-  if (e.key === "1") { e.preventDefault(); document.querySelector('.tool-btn[data-tool="pen"]')?.click(); }
-  if (e.key === "2") { e.preventDefault(); document.querySelector('.tool-btn[data-tool="eraser"]')?.click(); }
-  if (e.key === "3") { e.preventDefault(); document.querySelector('.tool-btn[data-tool="select"]')?.click(); }
+  if (e.key === "1") { e.preventDefault(); document.querySelector('.tool-btn[data-tool="select"]')?.click(); }
+  if (e.key === "2") { e.preventDefault(); document.querySelector('.tool-btn[data-tool="pen"]')?.click(); }
+  if (e.key === "3") { e.preventDefault(); document.querySelector('.tool-btn[data-tool="eraser"]')?.click(); }
   if (e.key === "4") { e.preventDefault(); document.querySelector('.tool-btn[data-tool="measure"]')?.click(); }
   if (e.key === "5") { e.preventDefault(); document.querySelector('.tool-btn[data-tool="eraseAll"]')?.click(); }
   // R — reset rotation on the current selection back to 0° (select tool only).
@@ -3381,7 +3608,14 @@ window.addEventListener("blur", () => {
   }
 });
 
-function setStatus(msg) { document.getElementById("status").textContent = msg; }
+let _lastStatusMsg = null;
+let _statusEl = null;
+function setStatus(msg) {
+  if (msg === _lastStatusMsg) return;  // skip identical updates (mousemove hot path)
+  _lastStatusMsg = msg;
+  if (!_statusEl) _statusEl = document.getElementById("status");
+  if (_statusEl) _statusEl.textContent = msg;
+}
 
 // ═══════════════════════════════════════════════════════
 // Init
