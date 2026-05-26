@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>Tilemap Editor — 630×630 (v0.4.4)</title>
+<title>Tilemap Editor — 630×630 (v0.4.5)</title>
 <style>
   * { box-sizing: border-box; }
   body {
@@ -605,6 +605,20 @@ let selectionPreviewRAF = null;
 // mousemoves that don't change the integer cell (1 cell = CELL_PX px).
 let selectionLastCell = null;
 
+// ── Rotation (Figma-style frame rotation around selection center) ──
+// Hover near a selection-bbox corner → rotation handle appears.
+// Drag rotates around the selection center; Shift snaps to 5°.
+// All changes are visual (yaw + pivot metadata on each placement) — the
+// underlying state.layers grid is untouched.
+let isRotating = false;
+let rotationStartAngle = 0;      // radians at mousedown
+let rotationBaseYaw    = 0;      // yaw at mousedown (degrees)
+let rotationPivotCell  = null;   // {x, y} in cell coords (selection center)
+let hoverRotationHandle = null;  // "tl"|"tr"|"bl"|"br" when hovering, else null
+const ROT_HANDLE_RADIUS_PX = 9;  // visual handle radius in canvas px
+const ROT_HANDLE_OFFSET_PX = 18; // distance outside the corner
+const ROT_HANDLE_HIT_PX    = 16; // mouse hit-test radius in canvas px
+
 // ── Measure / Annotation ──────────────────────────────
 // "측정" tool has 3 modes selectable from right panel:
 //   rect   — drag corner-to-corner, area/dimensions
@@ -725,6 +739,91 @@ function redoFn() {
   restore(redoStack.pop());
   drawPlacements();
   setStatus("다시 실행");
+}
+
+// ═══════════════════════════════════════════════════════
+// Rotation helpers (Figma-style frame rotation)
+// ═══════════════════════════════════════════════════════
+
+// Returns the selection bounding box in cell coords, or null when nothing is
+// selected. cx/cy are the geometric center (used as the rotation pivot for
+// multi-block frame rotation).
+function getSelectionBBox() {
+  if (selectedPids.size === 0) return null;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const pid of selectedPids) {
+    const p = state.placements[pid]; if (!p) continue;
+    const m = getModule(p.module);
+    const s = (m && m.snap) || 1;
+    if (p.x < x0) x0 = p.x;
+    if (p.y < y0) y0 = p.y;
+    if (p.x + s > x1) x1 = p.x + s;
+    if (p.y + s > y1) y1 = p.y + s;
+  }
+  if (!isFinite(x0)) return null;
+  return { x0, y0, x1, y1, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2 };
+}
+
+// Returns 4 handle centers (canvas px) at TL/TR/BL/BR, pushed diagonally
+// outside each corner of the bbox so they don't visually overlap the
+// selection outline.
+function rotationHandlePositionsPx(bbox) {
+  const off = ROT_HANDLE_OFFSET_PX;
+  return {
+    tl: { x: bbox.x0 * CELL_PX - off, y: bbox.y0 * CELL_PX - off },
+    tr: { x: bbox.x1 * CELL_PX + off, y: bbox.y0 * CELL_PX - off },
+    bl: { x: bbox.x0 * CELL_PX - off, y: bbox.y1 * CELL_PX + off },
+    br: { x: bbox.x1 * CELL_PX + off, y: bbox.y1 * CELL_PX + off },
+  };
+}
+
+// Hit-test a mouse event against the 4 rotation handles. Returns the corner
+// key ("tl"|"tr"|"bl"|"br") or null. Gated on select-tool + non-empty
+// selection + no other interaction in progress.
+function hitTestRotationHandle(e) {
+  if (currentTool !== "select" || selectedPids.size === 0) return null;
+  if (isSelecting || isDraggingGroup || isRotating) return null;
+  const bbox = getSelectionBBox(); if (!bbox) return null;
+  const r = canvas.getBoundingClientRect();
+  const mx = (e.clientX - r.left) / zoom;
+  const my = (e.clientY - r.top)  / zoom;
+  const handles = rotationHandlePositionsPx(bbox);
+  for (const key of ["tl","tr","bl","br"]) {
+    const h = handles[key];
+    if (Math.hypot(mx - h.x, my - h.y) <= ROT_HANDLE_HIT_PX) return key;
+  }
+  return null;
+}
+
+// Normalize a degrees value into [0,360) and optionally snap to 5°.
+function snapYaw(deg, shiftHeld) {
+  let y = ((deg % 360) + 360) % 360;
+  if (shiftHeld) y = Math.round(y / 5) * 5;
+  // Keep within [0,360) after rounding.
+  return ((y % 360) + 360) % 360;
+}
+
+// Propagate yaw + pivot to every cell of every selected block. For
+// ZON_Hunt_Area (snap=10), this writes to all 100 cells per block so
+// drawPlacements can detect the origin via (p.x % snap === 0) and skip
+// non-origin cells regardless of which one is iterated first.
+function applyYawToSelection(newYaw, pivotCellX, pivotCellY) {
+  const zoneGrid = state.layers["zone"];
+  for (const originPid of selectedPids) {
+    const p = state.placements[originPid]; if (!p) continue;
+    const m = getModule(p.module);
+    const snap = (m && m.snap) || 1;
+    for (let dy = 0; dy < snap; dy++) {
+      for (let dx = 0; dx < snap; dx++) {
+        const cellPid = zoneGrid && zoneGrid[p.y+dy] && zoneGrid[p.y+dy][p.x+dx];
+        if (cellPid && state.placements[cellPid]) {
+          state.placements[cellPid].yaw    = newYaw;
+          state.placements[cellPid].pivotX = pivotCellX;
+          state.placements[cellPid].pivotY = pivotCellY;
+        }
+      }
+    }
+  }
 }
 
 // ═══════════════════════════════════════════════════════
@@ -951,7 +1050,55 @@ function drawPlacements() {
       const m = getM(p.module);
       if (!m) continue;
       const x = p.x, y = p.y;
+      const snap = (m.snap && m.snap > 1) ? m.snap : 1;
+      const isUnitOrigin = (snap === 1) || (x % snap === 0 && y % snap === 0);
 
+      // ── Rotation path ── When the block has a non-zero yaw, render the
+      // whole snap×snap unit ONCE from the origin cell with a canvas transform,
+      // and skip the other (snap²-1) cells of the same unit so we don't paint
+      // axis-aligned squares on top.
+      if (p.yaw && snap > 1) {
+        if (!isUnitOrigin) continue;  // non-origin cells of a rotated unit
+        // Checker parity (yaw-rotated blocks use the same per-snap-unit color).
+        let pColor = m.color;
+        if (m.pattern === "checker" && m.color2) {
+          const parity = (Math.floor(x / snap) + Math.floor(y / snap)) % 2;
+          pColor = (parity === 0) ? m.color : m.color2;
+        }
+        const outlinePx = snap * CELL_PX;
+        const blockCx = (x + snap / 2) * CELL_PX;
+        const blockCy = (y + snap / 2) * CELL_PX;
+        // Pivot defaults to the block's own center when none was recorded
+        // (e.g. single-block rotation or migrated data).
+        const pivotPx = ((p.pivotX != null) ? p.pivotX : (x + snap / 2)) * CELL_PX;
+        const pivotPy = ((p.pivotY != null) ? p.pivotY : (y + snap / 2)) * CELL_PX;
+        const rad = p.yaw * Math.PI / 180;
+
+        ctx.save();
+        // Rotate around the pivot, then move the block's center into place.
+        ctx.translate(pivotPx, pivotPy);
+        ctx.rotate(rad);
+        ctx.translate(blockCx - pivotPx, blockCy - pivotPy);
+        ctx.fillStyle = pColor;
+        ctx.fillRect(-outlinePx / 2, -outlinePx / 2, outlinePx, outlinePx);
+        // Group / selection outlines inside the same transform so they follow the rotation.
+        if (p.groupId && groupColors[p.groupId]) {
+          ctx.strokeStyle = groupColors[p.groupId];
+          ctx.lineWidth = 3;
+          ctx.strokeRect(-outlinePx / 2 + 1.5, -outlinePx / 2 + 1.5, outlinePx - 3, outlinePx - 3);
+        }
+        if (selectedPids.has(pid)) {
+          ctx.strokeStyle = "#ffd700";
+          ctx.lineWidth = 2;
+          ctx.setLineDash([6, 4]);
+          ctx.strokeRect(-outlinePx / 2 + 1, -outlinePx / 2 + 1, outlinePx - 2, outlinePx - 2);
+          ctx.setLineDash([]);
+        }
+        ctx.restore();
+        continue;
+      }
+
+      // ── Fast axis-aligned path (unchanged from pre-v0.4.4) ──
       // Checker pattern fill — per snap-unit parity (zone style) or per-cell.
       let pColor = m.color;
       if (m.pattern === "checker" && m.color2) {
@@ -964,8 +1111,6 @@ function drawPlacements() {
       ctx.fillRect(x * CELL_PX, y * CELL_PX, CELL_PX, CELL_PX);
 
       // Group / selection outlines — one outline per snap unit, drawn at origin.
-      const snap = (m.snap && m.snap > 1) ? m.snap : 1;
-      const isUnitOrigin = (snap === 1) || (x % snap === 0 && y % snap === 0);
       if (isUnitOrigin) {
         const outlinePx = snap * CELL_PX;
         if (p.groupId && groupColors[p.groupId]) {
@@ -1160,13 +1305,17 @@ function applyGroupTranslate(dx, dy) {
     }
   });
 
-  // Stamp at new positions and update placement coords.
+  // Stamp at new positions and update placement coords. Pivot follows the
+  // translation so rotated blocks render at the moved location (pivot is in
+  // absolute cell coords, not relative to the block).
   dragGroupPids.forEach(pid => {
     const orig = dragGroupOrigPositions[pid];
     const p = state.placements[pid];
     if (!p) return;
     p.x = orig.x + dx;
     p.y = orig.y + dy;
+    if (orig.pivotX != null) p.pivotX = orig.pivotX + dx;
+    if (orig.pivotY != null) p.pivotY = orig.pivotY + dy;
     zoneGrid[p.y][p.x] = pid;
   });
 
@@ -1373,6 +1522,62 @@ function drawCursor() {
   if (currentTool === "measure") {
     cursorCtx.clearRect(0, 0, cursorCanvas.width, cursorCanvas.height);
     drawMeasureOverlay();
+    return;
+  }
+
+  // ── Rotation handles overlay ──
+  // Whenever the select tool has a non-empty selection (and no marquee/group
+  // drag is happening), paint 4 corner rotation handles outside the selection
+  // bbox. During an active rotation, also draw a pivot→mouse guide line + an
+  // angle label so the user can read the current yaw.
+  if (currentTool === "select" && selectedPids.size > 0 && !isSelecting && !isDraggingGroup) {
+    cursorCtx.clearRect(0, 0, cursorCanvas.width, cursorCanvas.height);
+    const bbox = getSelectionBBox();
+    if (bbox) {
+      const handles = rotationHandlePositionsPx(bbox);
+      for (const key of ["tl","tr","bl","br"]) {
+        const h = handles[key];
+        const isHover = (hoverRotationHandle === key) || isRotating;
+        const r = isHover ? ROT_HANDLE_RADIUS_PX + 2 : ROT_HANDLE_RADIUS_PX;
+        // Filled circle with outline
+        cursorCtx.beginPath();
+        cursorCtx.arc(h.x, h.y, r, 0, 2 * Math.PI);
+        cursorCtx.fillStyle = isHover ? "#ffd700" : "rgba(255,215,0,0.85)";
+        cursorCtx.fill();
+        cursorCtx.lineWidth = 1.5;
+        cursorCtx.strokeStyle = "#1a1a1a";
+        cursorCtx.stroke();
+        // ↻ curved arrow glyph inside the circle
+        cursorCtx.strokeStyle = "#1a1a1a";
+        cursorCtx.lineWidth = 1.5;
+        cursorCtx.beginPath();
+        cursorCtx.arc(h.x, h.y, r - 3.5, -Math.PI * 0.4, Math.PI * 1.1);
+        cursorCtx.stroke();
+      }
+      // Live rotation feedback — pivot→mouse dashed line + degree label.
+      if (isRotating && hoverCell && rotationPivotCell) {
+        const px = rotationPivotCell.x * CELL_PX;
+        const py = rotationPivotCell.y * CELL_PX;
+        const firstPid = selectedPids.values().next().value;
+        const yaw = (state.placements[firstPid] && state.placements[firstPid].yaw) || 0;
+        cursorCtx.strokeStyle = "rgba(255,215,0,0.6)";
+        cursorCtx.lineWidth = 1.5;
+        cursorCtx.setLineDash([4, 4]);
+        cursorCtx.beginPath();
+        cursorCtx.moveTo(px, py);
+        cursorCtx.lineTo((hoverCell.x + 0.5) * CELL_PX, (hoverCell.y + 0.5) * CELL_PX);
+        cursorCtx.stroke();
+        cursorCtx.setLineDash([]);
+        const label = `${yaw.toFixed(0)}°`;
+        cursorCtx.font = "bold 14px 'Segoe UI', sans-serif";
+        const tw = cursorCtx.measureText(label).width;
+        cursorCtx.fillStyle = "rgba(0,0,0,0.78)";
+        cursorCtx.fillRect(px + 8, py - 14, tw + 12, 20);
+        cursorCtx.fillStyle = "#ffd700";
+        cursorCtx.fillText(label, px + 14, py + 1);
+      }
+    }
+    lastCursorBounds = null;
     return;
   }
 
@@ -1932,6 +2137,31 @@ canvas.addEventListener("mousedown", (e) => {
   }
 
   const { x, y } = mouseToCell(e);
+
+  // ── Rotation handle hit (must be checked BEFORE inBounds, because the
+  //    handles are drawn OUTSIDE the selection bbox and may land on cells
+  //    >= GRID_W/H for selections at the right/bottom edge). ──
+  if (currentTool === "select" && e.button === 0 && selectedPids.size > 0) {
+    const handle = hitTestRotationHandle(e);
+    if (handle) {
+      pushUndo();
+      const bbox = getSelectionBBox();
+      isRotating = true;
+      rotationPivotCell = { x: bbox.cx, y: bbox.cy };
+      const r = canvas.getBoundingClientRect();
+      const mx = (e.clientX - r.left) / zoom;
+      const my = (e.clientY - r.top)  / zoom;
+      rotationStartAngle = Math.atan2(my - bbox.cy * CELL_PX, mx - bbox.cx * CELL_PX);
+      const firstPid = selectedPids.values().next().value;
+      rotationBaseYaw = (state.placements[firstPid] && state.placements[firstPid].yaw) || 0;
+      hoverRotationHandle = handle;
+      canvas.style.cursor = "grabbing";
+      setStatus("회전 중 · 드래그 (Shift=5° 스냅)");
+      drawCursor();
+      return;
+    }
+  }
+
   if (!inBounds(x, y)) return;
 
   // ── Alt+click eyedropper (highest priority — consumes any click) ──
@@ -1954,6 +2184,7 @@ canvas.addEventListener("mousedown", (e) => {
   // Selection is highlight-only: click+drag = rect selection (replace or Shift-union),
   // and movement is reserved for explicitly grouped (Ctrl+G) hunt cells.
   // Selecting a hunt cell does NOT make it movable — user must Ctrl+G first.
+  // (Rotation handle hit-test happens earlier — see "Rotation handle hit" above.)
   if (currentTool === "select" && e.button === 0) {
     const zoneGrid = state.layers["zone"];
     const pidHere = zoneGrid && zoneGrid[y] && zoneGrid[y][x];
@@ -1969,7 +2200,11 @@ canvas.addEventListener("mousedown", (e) => {
         dragGroupStartCell = { x, y };
         dragGroupOrigPositions = {};
         pids.forEach(p => {
-          dragGroupOrigPositions[p] = { x: state.placements[p].x, y: state.placements[p].y };
+          const pl = state.placements[p];
+          dragGroupOrigPositions[p] = {
+            x: pl.x, y: pl.y,
+            pivotX: pl.pivotX, pivotY: pl.pivotY,  // preserve rotation pivot through the translation
+          };
         });
         return;
       }
@@ -2062,6 +2297,26 @@ canvas.addEventListener("mousemove", (e) => {
   // Skip painting/measure/hover logic so brushes don't fire mid-pan.
   if (isPanning) return;
 
+  // Active rotation — recompute yaw from mouse-angle delta (pivot is the
+  // selection center fixed at mousedown). Shift snaps to 5°.
+  if (isRotating) {
+    const bbox = getSelectionBBox();
+    if (!bbox) { isRotating = false; return; }
+    const r = canvas.getBoundingClientRect();
+    const mx = (e.clientX - r.left) / zoom;
+    const my = (e.clientY - r.top)  / zoom;
+    const ang = Math.atan2(my - bbox.cy * CELL_PX, mx - bbox.cx * CELL_PX);
+    const deltaDeg = (ang - rotationStartAngle) * 180 / Math.PI;
+    const newYaw = snapYaw(rotationBaseYaw + deltaDeg, e.shiftKey);
+    applyYawToSelection(newYaw, bbox.cx, bbox.cy);
+    // Track cursor cell for the live guide-line label in drawCursor.
+    const cell = mouseToCell(e);
+    if (inBounds(cell.x, cell.y)) hoverCell = cell;
+    drawPlacements();
+    drawCursor();
+    return;
+  }
+
   // Quick distance measure (middle mouse drag) — update endpoint + overlay
   // then short-circuit so other tools don't react during the drag.
   if (isQuickMeasuring) {
@@ -2109,6 +2364,18 @@ canvas.addEventListener("mousemove", (e) => {
     hoverCell = { x, y };
     updateCellInfo(x, y);
     return;
+  }
+
+  // Rotation handle hover — only when select tool has a selection and no
+  // other interaction is active. Updates state.cursor + the overlay's
+  // hover-highlight key, then re-renders the cursor overlay if anything changed.
+  if (currentTool === "select" && selectedPids.size > 0) {
+    const newHover = hitTestRotationHandle(e);
+    if (newHover !== hoverRotationHandle) {
+      hoverRotationHandle = newHover;
+      canvas.style.cursor = newHover ? "grab" : "";
+      drawCursor();
+    }
   }
 
   if (inBounds(x, y)) {
@@ -2239,6 +2506,19 @@ window.addEventListener("mouseup", (e) => {
     // before redrawing the normal hover cursor.
     cursorCtx.clearRect(0, 0, cursorCanvas.width, cursorCanvas.height);
     lastCursorBounds = null;
+    drawCursor();
+  }
+  // Finalize rotation — commit yaw, clear interaction state, log final angle.
+  if (isRotating) {
+    const firstPid = selectedPids.values().next().value;
+    const yaw = (firstPid && state.placements[firstPid] && state.placements[firstPid].yaw) || 0;
+    isRotating = false;
+    rotationPivotCell = null;
+    canvas.style.cursor = "";
+    setStatus(`회전 완료 · yaw=${yaw.toFixed(1)}°`);
+    cursorCtx.clearRect(0, 0, cursorCanvas.width, cursorCanvas.height);
+    lastCursorBounds = null;
+    drawPlacements();
     drawCursor();
   }
   // Finalize select-drag rectangle — selectedPids was kept live during mousemove
@@ -3033,6 +3313,16 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "3") { e.preventDefault(); document.querySelector('.tool-btn[data-tool="select"]')?.click(); }
   if (e.key === "4") { e.preventDefault(); document.querySelector('.tool-btn[data-tool="measure"]')?.click(); }
   if (e.key === "5") { e.preventDefault(); document.querySelector('.tool-btn[data-tool="eraseAll"]')?.click(); }
+  // R — reset rotation on the current selection back to 0° (select tool only).
+  if ((e.key === "r" || e.key === "R") && currentTool === "select" && selectedPids.size > 0 && !isRotating) {
+    e.preventDefault();
+    pushUndo();
+    const bbox = getSelectionBBox();
+    applyYawToSelection(0, bbox ? bbox.cx : 0, bbox ? bbox.cy : 0);
+    drawPlacements();
+    drawCursor();
+    setStatus("회전 리셋 (yaw=0°)");
+  }
   // Move mode shortcuts
   if (currentTool === "measure" && measureMode === "move") {
     if (e.key === "Escape") { e.preventDefault(); deselectAnnotation(); }
