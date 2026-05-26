@@ -781,7 +781,7 @@ function rotationHandlePositionsPx(bbox) {
 // key ("tl"|"tr"|"bl"|"br") or null. Gated on select-tool + non-empty
 // selection + no other interaction in progress.
 function hitTestRotationHandle(e) {
-  if (currentTool !== "select" || selectedPids.size === 0) return null;
+  if (currentTool !== "select" || !hasGroupedSelection()) return null;
   if (isSelecting || isDraggingGroup || isRotating) return null;
   const bbox = getSelectionBBox(); if (!bbox) return null;
   const r = canvas.getBoundingClientRect();
@@ -796,6 +796,17 @@ function hitTestRotationHandle(e) {
 }
 
 // Normalize a degrees value into [0,360) and optionally snap to 5°.
+// True when at least one selected pid belongs to a grouped block.
+// Rotation is only allowed on grouped blocks (group = intentionally
+// locked together, so rotation makes physical sense as a unit).
+function hasGroupedSelection() {
+  for (const pid of selectedPids) {
+    const p = state.placements[pid];
+    if (p && p.groupId) return true;
+  }
+  return false;
+}
+
 function snapYaw(deg, shiftHeld) {
   let y = ((deg % 360) + 360) % 360;
   if (shiftHeld) y = Math.round(y / 5) * 5;
@@ -1083,9 +1094,14 @@ function drawPlacements() {
         ctx.fillRect(-outlinePx / 2, -outlinePx / 2, outlinePx, outlinePx);
         // Group / selection outlines inside the same transform so they follow the rotation.
         if (p.groupId && groupColors[p.groupId]) {
+          ctx.save();
+          ctx.globalAlpha = 0.45;
           ctx.strokeStyle = groupColors[p.groupId];
-          ctx.lineWidth = 3;
-          ctx.strokeRect(-outlinePx / 2 + 1.5, -outlinePx / 2 + 1.5, outlinePx - 3, outlinePx - 3);
+          ctx.lineWidth = 1;
+          ctx.setLineDash([2, 3]);
+          ctx.strokeRect(-outlinePx / 2 + 1, -outlinePx / 2 + 1, outlinePx - 2, outlinePx - 2);
+          ctx.setLineDash([]);
+          ctx.restore();
         }
         if (selectedPids.has(pid)) {
           ctx.strokeStyle = "#ffd700";
@@ -1114,9 +1130,14 @@ function drawPlacements() {
       if (isUnitOrigin) {
         const outlinePx = snap * CELL_PX;
         if (p.groupId && groupColors[p.groupId]) {
+          ctx.save();
+          ctx.globalAlpha = 0.45;
           ctx.strokeStyle = groupColors[p.groupId];
-          ctx.lineWidth = 3;
-          ctx.strokeRect(x * CELL_PX + 1.5, y * CELL_PX + 1.5, outlinePx - 3, outlinePx - 3);
+          ctx.lineWidth = 1;
+          ctx.setLineDash([2, 3]);
+          ctx.strokeRect(x * CELL_PX + 1, y * CELL_PX + 1, outlinePx - 2, outlinePx - 2);
+          ctx.setLineDash([]);
+          ctx.restore();
         }
         if (selectedPids.has(pid)) {
           ctx.strokeStyle = "#ffd700";
@@ -1530,7 +1551,7 @@ function drawCursor() {
   // drag is happening), paint 4 corner rotation handles outside the selection
   // bbox. During an active rotation, also draw a pivot→mouse guide line + an
   // angle label so the user can read the current yaw.
-  if (currentTool === "select" && selectedPids.size > 0 && !isSelecting && !isDraggingGroup) {
+  if (currentTool === "select" && hasGroupedSelection() && !isSelecting && !isDraggingGroup) {
     cursorCtx.clearRect(0, 0, cursorCanvas.width, cursorCanvas.height);
     const bbox = getSelectionBBox();
     if (bbox) {
@@ -2141,7 +2162,7 @@ canvas.addEventListener("mousedown", (e) => {
   // ── Rotation handle hit (must be checked BEFORE inBounds, because the
   //    handles are drawn OUTSIDE the selection bbox and may land on cells
   //    >= GRID_W/H for selections at the right/bottom edge). ──
-  if (currentTool === "select" && e.button === 0 && selectedPids.size > 0) {
+  if (currentTool === "select" && e.button === 0 && hasGroupedSelection()) {
     const handle = hitTestRotationHandle(e);
     if (handle) {
       pushUndo();
@@ -2369,7 +2390,7 @@ canvas.addEventListener("mousemove", (e) => {
   // Rotation handle hover — only when select tool has a selection and no
   // other interaction is active. Updates state.cursor + the overlay's
   // hover-highlight key, then re-renders the cursor overlay if anything changed.
-  if (currentTool === "select" && selectedPids.size > 0) {
+  if (currentTool === "select" && hasGroupedSelection()) {
     const newHover = hitTestRotationHandle(e);
     if (newHover !== hoverRotationHandle) {
       hoverRotationHandle = newHover;
@@ -3314,7 +3335,7 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "4") { e.preventDefault(); document.querySelector('.tool-btn[data-tool="measure"]')?.click(); }
   if (e.key === "5") { e.preventDefault(); document.querySelector('.tool-btn[data-tool="eraseAll"]')?.click(); }
   // R — reset rotation on the current selection back to 0° (select tool only).
-  if ((e.key === "r" || e.key === "R") && currentTool === "select" && selectedPids.size > 0 && !isRotating) {
+  if ((e.key === "r" || e.key === "R") && currentTool === "select" && hasGroupedSelection() && !isRotating) {
     e.preventDefault();
     pushUndo();
     const bbox = getSelectionBBox();
