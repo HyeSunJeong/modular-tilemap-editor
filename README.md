@@ -3,7 +3,7 @@
 언리얼/블렌더 모듈러 레벨 디자인을 위한 **630×630 그리드** 타일맵 에디터 (v0.4.7).
 2D로 그린 그림을 JSON으로 저장 → Blender 스크립트가 3D 큐브로 자동 조립합니다.
 
-**🌐 Live Demo (브라우저에서 즉시 사용)**: <a href="https://hyesunjeong.github.io/modular-tilemap-editor/" target="_blank">https://hyesunjeong.github.io/modular-tilemap-editor/</a>
+**🌐 [Live Demo — 브라우저에서 즉시 사용](https://hyesunjeong.github.io/modular-tilemap-editor/)**
 
 설치·다운로드 없이 위 URL에서 바로 그리기 시작. JSON 저장 후 Blender 단계는 아래 가이드 참고.
 
