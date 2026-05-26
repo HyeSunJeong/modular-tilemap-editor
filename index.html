@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>Tilemap Editor — 630×630 (v0.4.8)</title>
+<title>Tilemap Editor — 630×630 (v0.4.9)</title>
 <style>
   * { box-sizing: border-box; }
   body {
@@ -439,10 +439,10 @@ const MODULES = [
   // protects placements from accidental erase once layout is finalized.
   // Material variants — all 63×63 checker, light/dark pair per hue. Same-hue
   // variants let designers tag different territory regions visually.
-  { id: "TER_Material_Yellow", name: "Material 노랑 (63×63)", color: "#FFEAA9", color2: "#EACF6B", pattern: "checker", footprint: [63,63], layer: "territory", snap: 63 },
-  { id: "TER_Material_Red",    name: "Material 빨강 (63×63)", color: "#FFB2AA", color2: "#FF998D", pattern: "checker", footprint: [63,63], layer: "territory", snap: 63 },
-  { id: "TER_Material_Blue",   name: "Material 파랑 (63×63)", color: "#CEDFFF", color2: "#93BEFF", pattern: "checker", footprint: [63,63], layer: "territory", snap: 63 },
-  { id: "TER_Material_Gray",   name: "Material 회색 (63×63)", color: "#BFBFBF", color2: "#8D8D8D", pattern: "checker", footprint: [63,63], layer: "territory", snap: 63 },
+  { id: "TER_Material_Yellow", name: "Material 노랑 (63×63)", color: "rgba(255,234,169,0.7)", color2: "rgba(234,207,107,0.7)", pattern: "checker", footprint: [63,63], layer: "territory", snap: 63 },
+  { id: "TER_Material_Red",    name: "Material 빨강 (63×63)", color: "rgba(255,178,170,0.7)", color2: "rgba(255,153,141,0.7)", pattern: "checker", footprint: [63,63], layer: "territory", snap: 63 },
+  { id: "TER_Material_Blue",   name: "Material 파랑 (63×63)", color: "rgba(206,223,255,0.7)", color2: "rgba(147,190,255,0.7)", pattern: "checker", footprint: [63,63], layer: "territory", snap: 63 },
+  { id: "TER_Material_Gray",   name: "Material 회색 (63×63)", color: "rgba(191,191,191,0.7)", color2: "rgba(141,141,141,0.7)", pattern: "checker", footprint: [63,63], layer: "territory", snap: 63 },
   // Base terrain — flat 1×1 ground at z=0
   { id: "TRN_Base_Grass",    name: "잔디",            color: "#4a9a4a", footprint: [1,1], layer: "base" },
   { id: "TRN_Base_Dirt",     name: "흙",              color: "#7a5a3a", footprint: [1,1], layer: "base" },
@@ -619,7 +619,7 @@ let selectionLastCell = null;
 
 // ── Rotation (Figma-style frame rotation around selection center) ──
 // Hover near a selection-bbox corner → rotation handle appears.
-// Drag rotates around the selection center; Shift snaps to 5°.
+// Drag rotates around the selection center; always snaps to 5°.
 // All changes are visual (yaw + pivot metadata on each placement) — the
 // underlying state.layers grid is untouched.
 let isRotating = false;
@@ -844,9 +844,10 @@ function hasGroupedSelection() {
   return false;
 }
 
-function snapYaw(deg, shiftHeld) {
+function snapYaw(deg) {
+  // Always snap to 5° increments.
   let y = ((deg % 360) + 360) % 360;
-  if (shiftHeld) y = Math.round(y / 5) * 5;
+  y = Math.round(y / 5) * 5;
   // Keep within [0,360) after rounding.
   return ((y % 360) + 360) % 360;
 }
@@ -1183,16 +1184,34 @@ function drawPlacements() {
           ctx.stroke();
           ctx.restore();
         }
-        if (selSet.has(pid)) {
-          const outlinePx = snap * CELL_PX;
+        // snap=1: draw inline (1×1 cells don't overwrite each other).
+        // snap>1: defer to second pass drawn after all fills.
+        if (snap === 1 && selSet.has(pid)) {
           ctx.strokeStyle = "#ffd700";
           ctx.lineWidth = 2;
           ctx.setLineDash([6, 4]);
-          ctx.strokeRect(x * CELL_PX + 1, y * CELL_PX + 1, outlinePx - 2, outlinePx - 2);
+          ctx.strokeRect(x * CELL_PX + 1, y * CELL_PX + 1, CELL_PX - 2, CELL_PX - 2);
           ctx.setLineDash([]);
         }
       }
     }
+  }
+
+  // Second pass — selection outlines for snap>1 non-rotated blocks.
+  // Drawn AFTER all cell fills so sibling cells don't overwrite the outline.
+  if (selSet.size > 0) {
+    ctx.strokeStyle = "#ffd700";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 4]);
+    for (const pid of selSet) {
+      const p = placements[pid];
+      if (!p || p.yaw) continue; // rotated: already handled inside rotation transform
+      const m = modMap.get(p.module);
+      if (!m || m._snap <= 1) continue; // snap=1: handled inline above
+      const outlinePx = m._snap * CELL_PX;
+      ctx.strokeRect(p.x * CELL_PX + 1, p.y * CELL_PX + 1, outlinePx - 2, outlinePx - 2);
+    }
+    ctx.setLineDash([]);
   }
 
   // bbox cache may go stale if anything moved/added/removed between frames.
@@ -1465,6 +1484,27 @@ function paintBrush(x, y, moduleId, size) {
 // - Multi-cell module selected → erases that footprint area in module's layer
 // - 1×1 module selected → erases brush_size × brush_size in module's layer
 // - No module selected → no-op
+// Returns the snap-aligned origin {x,y} of a rotated placement in `layer`
+// whose visual (rotated) footprint covers world-cell point (wx, wy).
+// Used by eraseStamp so clicking on the visual rotated block erases the right cells.
+function findRotatedOriginAt(wx, wy, layer, snap) {
+  for (const p of Object.values(state.placements)) {
+    if (p.layer !== layer || !p.yaw) continue;
+    if (p.x % snap !== 0 || p.y % snap !== 0) continue; // only origin cells
+    const pivotX = p.pivotX != null ? p.pivotX : p.x + snap / 2;
+    const pivotY = p.pivotY != null ? p.pivotY : p.y + snap / 2;
+    const rad = -(p.yaw * Math.PI / 180); // inverse rotation
+    const dx = wx - pivotX;
+    const dy = wy - pivotY;
+    const lx = dx * Math.cos(rad) - dy * Math.sin(rad) + pivotX;
+    const ly = dx * Math.sin(rad) + dy * Math.cos(rad) + pivotY;
+    if (lx >= p.x && lx < p.x + snap && ly >= p.y && ly < p.y + snap) {
+      return { x: p.x, y: p.y };
+    }
+  }
+  return null;
+}
+
 function eraseStamp(x, y, moduleId, size) {
   const m = getModule(moduleId);
   if (!m) return;
@@ -1475,12 +1515,22 @@ function eraseStamp(x, y, moduleId, size) {
     return;
   }
   const [fw, fh] = m.footprint;
+  const rawX = x, rawY = y; // original click before snap (needed for rotation hit test)
   // Mirror paintBrush snap so erase aligns to the same grid as placement.
   if (m.snap && m.snap > 1) {
     x = Math.floor(x / m.snap) * m.snap;
     y = Math.floor(y / m.snap) * m.snap;
   }
   if (fw > 1 || fh > 1) {
+    // For zone (or any rotated snap>1 layer): if the snapped position has no data,
+    // do an inverse-rotation search to find the real origin of the visual block.
+    if (m.snap > 1) {
+      const grid = state.layers[L];
+      if (!grid || !(grid[y] && grid[y][x])) {
+        const found = findRotatedOriginAt(rawX, rawY, L, m.snap);
+        if (found) { x = found.x; y = found.y; }
+      }
+    }
     // Multi-cell: erase footprint area at cursor (top-left)
     for (let dy = 0; dy < fh; dy++)
       for (let dx = 0; dx < fw; dx++)
@@ -2317,7 +2367,7 @@ canvas.addEventListener("mousedown", (e) => {
       rotationBaseYaw = (state.placements[firstPid] && state.placements[firstPid].yaw) || 0;
       hoverRotationHandle = handle;
       canvas.style.cursor = "grabbing";
-      setStatus("회전 중 · 드래그 (Shift=5° 스냅)");
+      setStatus("회전 중 · 드래그 (5° 스냅)");
       drawCursor();
       return;
     }
@@ -2479,7 +2529,7 @@ canvas.addEventListener("mousemove", (e) => {
   if (isPanning) return;
 
   // Active rotation — recompute yaw from mouse-angle delta (pivot is the
-  // selection center fixed at mousedown). Shift snaps to 5°.
+  // selection center fixed at mousedown). Always snaps to 5°.
   if (isRotating) {
     const bbox = getSelectionBBox();
     if (!bbox) { isRotating = false; return; }
@@ -2488,7 +2538,7 @@ canvas.addEventListener("mousemove", (e) => {
     const my = (e.clientY - r.top)  / zoom;
     const ang = Math.atan2(my - bbox.cy * CELL_PX, mx - bbox.cx * CELL_PX);
     const deltaDeg = (ang - rotationStartAngle) * 180 / Math.PI;
-    const newYaw = snapYaw(rotationBaseYaw + deltaDeg, e.shiftKey);
+    const newYaw = snapYaw(rotationBaseYaw + deltaDeg);
     applyYawToSelection(newYaw, bbox.cx, bbox.cy);
     // Track cursor cell for the live guide-line label in drawCursor.
     const cell = mouseToCell(e);
@@ -2854,6 +2904,7 @@ function applyModifierCursor() {
 function performToolAt(x, y, button, isDrag = false) {
   const isRight = button === 2;
   if (currentTool === "measure") return;  // measure handled in mousedown/move
+  if (currentTool === "select") return;   // select tool has its own mousedown/move handlers
   // 전체 지우개 mode treats both clicks the same — wipe non-TER/ZON layers.
   if (currentTool === "eraseAll") {
     eraseAllAt(x, y, brushSize);
