@@ -1,9 +1,9 @@
 # Modular Tilemap Editor
 
-언리얼/블렌더 모듈러 레벨 디자인을 위한 **630×630 그리드** 타일맵 에디터 (v0.4.5).
+언리얼/블렌더 모듈러 레벨 디자인을 위한 **630×630 그리드** 타일맵 에디터 (v0.4.7).
 2D로 그린 그림을 JSON으로 저장 → Blender 스크립트가 3D 큐브로 자동 조립합니다.
 
-**🌐 Live Demo (브라우저에서 즉시 사용)**: https://hyesunjeong.github.io/modular-tilemap-editor/
+**🌐 Live Demo (브라우저에서 즉시 사용)**: <a href="https://hyesunjeong.github.io/modular-tilemap-editor/" target="_blank">https://hyesunjeong.github.io/modular-tilemap-editor/</a>
 
 설치·다운로드 없이 위 URL에서 바로 그리기 시작. JSON 저장 후 Blender 단계는 아래 가이드 참고.
 
@@ -27,6 +27,7 @@
 | `[` / `]` | 브러시 크기 -1 / +1 |
 | `Ctrl+Z` / `Ctrl+Y` | 되돌리기 / 다시 실행 |
 | `Ctrl+G` | 그룹 토글 (선택 있으면 그룹화 / 없으면 hover 그룹 해제) |
+| `Ctrl+F` | **측정 사각 자동 생성** — 선택된 블록의 bbox 크기로 측정 사각형 즉시 추가 |
 | `F2` | 선택된 영역(annotation) 이름 변경 |
 | **회전 핸들 드래그** | 선택된 사냥터 공간을 **프레임 중심 기준 자유 회전** (Figma 스타일, 코너 ↻ 아이콘) |
 | **`Shift` + 회전** | **5도 단위 스냅** 회전 |
@@ -34,6 +35,16 @@
 
 브러시 프리셋 버튼: **1 / 3 / 5 / 10 / 20 / 50**
 
+> **v0.4.7 변경점**
+> - **Ctrl+F 측정 사각 자동 생성** — 선택된 블록이 있을 때 Ctrl+F를 누르면 선택 영역 bbox 크기의 측정 사각형이 자동 추가됨
+> - **도구 단축키 재배치** — `1` 선택 / `2` 펜 / `3` 지우개 / `4` 측정 (선택 도구를 가장 빠른 키로)
+> - **저장경로 변경 버튼** — 원하는 폴더 지정 후 JSON 저장·Ctrl+S 가 해당 폴더에 직접 저장
+> - **물(water) 레이어** 추가 — Environment와 Road 사이 렌더링, TRN_Base_Water 전용 레이어
+> - **대로·소로 저장 버그 수정** — importJSON에서 placeCell 방식으로 칠해진 형태 그대로 복원
+> - **그룹화 데이터** JSON 저장/불러오기에 반영 (groupId 라운드트립)
+> - **언더레이 이미지** JSON 포함 (base64 PNG 저장·복원)
+> - **성능 최적화** — MODULE_MAP O(1), RAF 코얼레스, bbox·rect 캐시, setStatus 중복 제거, undo shallow clone
+>
 > **v0.4.5 변경점**
 > - **사냥터 공간 Figma식 회전** — 선택 후 코너 바깥의 ↻ 아이콘을 드래그하면 선택 영역 중심을 기준으로 자유 회전, `Shift` 누르면 **5도 단위 스냅**
 > - 다중 블록 선택 시 **프레임 중심을 피벗**으로 함께 회전 (블록 간 상대 위치 유지)

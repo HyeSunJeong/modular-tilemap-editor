@@ -300,7 +300,9 @@
   <div class="actions">
     <button class="action-btn" id="btn-save">JSON 저장</button>
     <button class="action-btn" id="btn-load">JSON 불러오기</button>
+    <button class="action-btn" id="btn-change-path" style="margin-top:4px; width:100%; font-size:12px;">📁 저장경로 변경</button>
   </div>
+  <div id="save-path-label" style="font-size:11px; color:#888; margin:2px 0 6px 4px;">(기본 — 다운로드 폴더)</div>
 
   <h2>정보</h2>
   <div class="info">
@@ -3139,9 +3141,8 @@ function buildTilemapJson() {
   return { json: JSON.stringify(data, null, 2), count: placements.length };
 }
 
-// "JSON 저장" button — always a fresh timestamped download (a clean snapshot).
-function exportJSON() {
-  const { json, count } = buildTilemapJson();
+// Legacy blob-download path (no File System Access API).
+function exportJSONLegacy(json, count) {
   const blob = new Blob([json], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -3152,14 +3153,24 @@ function exportJSON() {
   URL.revokeObjectURL(url);
   setStatus(`${count}개 배치 저장됨 (v${SCHEMA_VERSION})`);
 }
+// "JSON 저장" button — uses configured directory if set, else legacy download.
+function exportJSON() {
+  const { json, count } = buildTilemapJson();
+  if (saveDirectoryHandle) { _writeToDirectory(json, count); return; }
+  exportJSONLegacy(json, count);
+}
 
 // Ctrl+S — remembers a file handle so repeated saves go to the same location
 // without nagging the picker. First press shows the OS save dialog (File
 // System Access API); subsequent presses overwrite that file directly.
 // Falls back to legacy blob-download if the API is unavailable (Safari/FF).
 let saveFileHandle = null;
+let saveDirectoryHandle = null;
 async function quickSaveJson() {
   const { json, count } = buildTilemapJson();
+
+  // Directory path takes priority over the per-file handle.
+  if (saveDirectoryHandle) { await _writeToDirectory(json, count); return; }
 
   if (typeof window.showSaveFilePicker === "function") {
     try {
@@ -3196,8 +3207,54 @@ async function quickSaveJson() {
       saveFileHandle = null;
     }
   }
-  // Fallback path — same as the legacy export button.
-  exportJSON();
+  // Fallback path — legacy blob-download.
+  exportJSONLegacy(json, count);
+}
+
+// ── Save-path (directory) management ──────────────────
+async function _writeToDirectory(json, count) {
+  try {
+    if ((await saveDirectoryHandle.queryPermission({ mode: "readwrite" })) !== "granted") {
+      if ((await saveDirectoryHandle.requestPermission({ mode: "readwrite" })) !== "granted") {
+        setStatus("저장 권한 거부됨"); return;
+      }
+    }
+    const ts = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+    const fname = `tilemap_${ts}.json`;
+    const fh = await saveDirectoryHandle.getFileHandle(fname, { create: true });
+    const writable = await fh.createWritable();
+    await writable.write(json);
+    await writable.close();
+    setStatus(`💾 ${saveDirectoryHandle.name}/${fname} (${count}개)`);
+  } catch (err) {
+    console.warn("Directory write failed:", err);
+    saveDirectoryHandle = null;
+    updateSavePathLabel();
+    setStatus("폴더 저장 실패 — 다운로드로 대체");
+    exportJSONLegacy(json, count);
+  }
+}
+
+async function changeSavePath() {
+  if (typeof window.showDirectoryPicker !== "function") {
+    setStatus("이 브라우저는 폴더 선택을 지원하지 않습니다 (Chrome 권장)");
+    return;
+  }
+  try {
+    const dir = await window.showDirectoryPicker({ mode: "readwrite" });
+    saveDirectoryHandle = dir;
+    saveFileHandle = null;
+    updateSavePathLabel();
+    setStatus(`저장 경로 설정: 📁 ${dir.name}`);
+  } catch (err) {
+    if (err && err.name !== "AbortError") console.warn("showDirectoryPicker failed:", err);
+    setStatus("경로 변경 취소됨");
+  }
+}
+
+function updateSavePathLabel() {
+  const el = document.getElementById("save-path-label");
+  if (el) el.textContent = saveDirectoryHandle ? `📁 ${saveDirectoryHandle.name}` : "(기본 — 다운로드 폴더)";
 }
 
 // ── Auto-save to localStorage ─────────────────────────
@@ -3339,6 +3396,7 @@ function importJSON(text) {
 }
 
 document.getElementById("btn-save").addEventListener("click", exportJSON);
+document.getElementById("btn-change-path").addEventListener("click", changeSavePath);
 document.getElementById("btn-load").addEventListener("click", () => {
   document.getElementById("file-input").click();
 });
