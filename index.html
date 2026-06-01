@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>Tilemap Editor — 630×630 (v0.4.9)</title>
+<title>Tilemap Editor — 630×630 (v0.4.10)</title>
 <style>
   * { box-sizing: border-box; }
   body {
@@ -947,16 +947,25 @@ function placeModule(moduleId, x, y, z = 0) {
 }
 
 // Eraser is scoped to a specific layer (passed in) — never touches other layers.
-// The layer is determined by the currently selected palette module
-// → "what I'm holding paints AND erases the same layer".
-function eraseAt(x, y, layer) {
+// The layer is determined by the currently selected palette module.
+// When `moduleId` is given, the eraser is ALSO scoped to that exact module so
+// siblings sharing a layer survive — e.g. grass/dirt/stone all live on "base",
+// nature/buildings all live on "environment", 대로/소로 both on "road"; without
+// this match, erasing one would wipe the others. Pass no moduleId (전체 지우개)
+// to erase whatever occupies the cell.
+function eraseAt(x, y, layer, moduleId) {
   if (!inBounds(x, y) || !layer) return;
   // Safety net — eraseStamp also checks, but other callers shouldn't bypass the lock.
   if (layer === "territory" && territoryLocked) return;
   const grid = state.layers[layer];
   if (!grid) return;
   const pid = grid[y][x];
-  if (pid) clearCell(pid, x, y);
+  if (!pid) return;
+  if (moduleId) {
+    const p = state.placements[pid];
+    if (p && p.module !== moduleId) return;  // different module here → leave it
+  }
+  clearCell(pid, x, y);
 }
 
 // Bucket fills within the active module's layer only
@@ -1516,33 +1525,34 @@ function eraseStamp(x, y, moduleId, size) {
   }
   const [fw, fh] = m.footprint;
   const rawX = x, rawY = y; // original click before snap (needed for rotation hit test)
-  // Mirror paintBrush snap so erase aligns to the same grid as placement.
+
+  // Snap-block modules (territory 63×63, zone 10×10) erase as one aligned block.
+  // Roads have NO snap field, so they fall through to the brush-size path below —
+  // this lets 대로/소로 erasers grow with brush size while their PEN stays a fixed
+  // footprint stamp (paintBrush handles pen separately).
   if (m.snap && m.snap > 1) {
     x = Math.floor(x / m.snap) * m.snap;
     y = Math.floor(y / m.snap) * m.snap;
-  }
-  if (fw > 1 || fh > 1) {
-    // For zone (or any rotated snap>1 layer): if the snapped position has no data,
-    // do an inverse-rotation search to find the real origin of the visual block.
-    if (m.snap > 1) {
-      const grid = state.layers[L];
-      if (!grid || !(grid[y] && grid[y][x])) {
-        const found = findRotatedOriginAt(rawX, rawY, L, m.snap);
-        if (found) { x = found.x; y = found.y; }
-      }
+    // Zone: if the snapped origin has no data, the visible block may be rotated —
+    // inverse-rotation search finds its real grid origin.
+    const grid = state.layers[L];
+    if (!grid || !(grid[y] && grid[y][x])) {
+      const found = findRotatedOriginAt(rawX, rawY, L, m.snap);
+      if (found) { x = found.x; y = found.y; }
     }
-    // Multi-cell: erase footprint area at cursor (top-left)
     for (let dy = 0; dy < fh; dy++)
       for (let dx = 0; dx < fw; dx++)
-        eraseAt(x + dx, y + dy, L);
-  } else {
-    // 1×1: erase N×N centered on cursor (brush size)
-    if (size === 1) { eraseAt(x, y, L); return; }
-    const { x0, y0 } = brushBounds(x, y, size);
-    for (let dy = 0; dy < size; dy++)
-      for (let dx = 0; dx < size; dx++)
-        eraseAt(x0 + dx, y0 + dy, L);
+        eraseAt(x + dx, y + dy, L, moduleId);
+    return;
   }
+
+  // Everything else — 1×1 terrain/env AND roads — erase an N×N brush region,
+  // scoped to the selected module so layer-mates survive (grass≠dirt, 대로≠소로).
+  if (size === 1) { eraseAt(x, y, L, moduleId); return; }
+  const { x0, y0 } = brushBounds(x, y, size);
+  for (let dy = 0; dy < size; dy++)
+    for (let dx = 0; dx < size; dx++)
+      eraseAt(x0 + dx, y0 + dy, L, moduleId);
 }
 
 // "전체 지우개" tool — sweeps every layer EXCEPT territory and zone within an
@@ -1773,10 +1783,14 @@ function drawBrushHoverAt(hx, hy) {
     rw = brushSize * CELL_PX; rh = brushSize * CELL_PX;
     color = "rgba(255,160,40,0.95)";   // bright orange
   } else {
-    if (isMultiCell(selectedModule)) {
-      const m = getModule(selectedModule);
-      const sx = (m.snap && m.snap > 1) ? Math.floor(hx / m.snap) * m.snap : hx;
-      const sy = (m.snap && m.snap > 1) ? Math.floor(hy / m.snap) * m.snap : hy;
+    const m = getModule(selectedModule);
+    const isSnapBlock = !!(m && m.snap && m.snap > 1);   // territory / zone
+    // Footprint box for snap-blocks (always) and for non-snap multi-cell PENs
+    // (roads). Road ERASER follows brushSize instead, matching eraseStamp.
+    const useFootprint = isMultiCell(selectedModule) && (isSnapBlock || !isEraser);
+    if (useFootprint) {
+      const sx = isSnapBlock ? Math.floor(hx / m.snap) * m.snap : hx;
+      const sy = isSnapBlock ? Math.floor(hy / m.snap) * m.snap : hy;
       rx = sx * CELL_PX; ry = sy * CELL_PX;
       rw = m.footprint[0] * CELL_PX; rh = m.footprint[1] * CELL_PX;
     } else {
