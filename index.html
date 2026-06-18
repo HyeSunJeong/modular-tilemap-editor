@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>Tilemap Editor — 630×630 (v0.4.10)</title>
+<title>Tilemap Editor — 882×756 (v0.4.11)</title>
 <style>
   * { box-sizing: border-box; }
   body {
@@ -142,6 +142,7 @@
   #canvas-annotations { z-index: 3; pointer-events: none; }
   #canvas-underlay    { z-index: 4; pointer-events: none; }
   #canvas-cursor      { z-index: 5; pointer-events: none; }
+  #canvas-uhandle     { z-index: 6; pointer-events: none; }
 
   /* Zoom panel buttons */
   .zoom-row { display: flex; gap: 4px; }
@@ -285,10 +286,6 @@
       <label for="img-toggle" style="flex:1;cursor:pointer">표시</label>
     </div>
     <div class="row">
-      <input type="checkbox" id="img-align-top">
-      <label for="img-align-top" style="flex:1;cursor:pointer" title="ON: 캔버스 상단에 정렬 / OFF: 중앙 정렬">상단 정렬</label>
-    </div>
-    <div class="row">
       <span style="font-size:11px;color:#aaa">투명도</span>
       <input type="range" id="img-opacity" min="0" max="100" value="50">
       <span id="opacity-val">50%</span>
@@ -306,8 +303,8 @@
 
   <h2>정보</h2>
   <div class="info">
-    그리드: 630 × 630<br>
-    타일: 1m × 1m (총 630m × 630m)<br>
+    그리드: 882 × 756<br>
+    타일: 1m × 1m (총 882m × 756m)<br>
     굵은선: 63칸마다 (Material 정렬)<br>
     좌표: (x=열, y=행), (0,0)=좌상단<br>
     <hr>
@@ -345,6 +342,7 @@
     <canvas id="canvas"             width="1024" height="1024"></canvas>
     <canvas id="canvas-annotations" width="1024" height="1024"></canvas>
     <canvas id="canvas-cursor"      width="1024" height="1024"></canvas>
+    <canvas id="canvas-uhandle"     width="1024" height="1024"></canvas>
   </div>
   <div id="status">준비 완료</div>
 </div>
@@ -423,7 +421,7 @@
 // ═══════════════════════════════════════════════════════
 // Config
 // ═══════════════════════════════════════════════════════
-const GRID_W = 630, GRID_H = 630;   // 630×630 (= 10 × QUADRANT 63) covers 630m × 630m
+const GRID_W = 882, GRID_H = 756;   // 882×756 (= 14 × QUADRANT 63 wide, 12 tall) covers 882m × 756m
 const CELL_PX = 4;                  // halved from 8 → canvas is 2560² instead of 5120² (¼ memory, 4× render)
 const TILE_SIZE_M = 1.0;
 const QUADRANT = 63;          // thick grid line every N cells — aligned to TER_Material (63×63)
@@ -508,6 +506,16 @@ function makeEmptyLayers() {
   return o;
 }
 
+// ── Copy-on-write state versioning (see snapshot()/ownRow below) ──
+// A monotonic generation tags each "owned" layer row. snapshot() and the line
+// preview SHARE layer-row arrays by reference instead of deep-cloning the whole
+// GRID_W×GRID_H×LAYERS grid every time; a row whose _g ≠ the current generation
+// is shared with some capture and is cloned before its next write (ownRow). The
+// sparse placements dict is still copied eagerly so its objects stay pristine.
+// Per-stroke / per-preview-frame clone cost drops from O(cells) to O(touched
+// rows), and the 100-deep undo stack shares unchanged rows.
+let _stateGen = 1;
+
 let state = {
   layers: makeEmptyLayers(),   // layers[name][y][x] = placement_id or null
   placements: {},              // pid -> { module, x, y, z, layer, footprint, yaw }
@@ -531,22 +539,23 @@ let dragStartCell = null;        // {x, y} captured at mousedown, used as line s
 let lastPaintAnchor = null;      // {x, y} updated after every successful paint (unused by line mode now, kept for future use)
 // Live preview snapshot — taken when line mode begins; restored on each
 // mousemove so the preview line "repaints" from a clean base each frame.
-// structuredClone is used (faster than JSON round-trip for sparse objects).
+// Uses the copy-on-write capture (cloneStateShallow/adoptState), so a restore
+// is O(LAYERS×GRID_H) + a sparse placements copy, not a full-grid deep clone.
 let linePreviewSnapshot = null;
 
 // ── linePreviewSnapshot helpers ──────────────────────────────────────────────
-// Dense 630×630 layers: .map(r=>r.slice()) is ~10× faster than structuredClone
-// because slice() is a native bulk copy while structuredClone recurses per-element.
-// Placements (sparse): structuredClone is 3–5× faster than JSON round-trip.
+// Reuses the copy-on-write capture (cloneStateShallow / adoptState): entering
+// line mode shares the current rows + placements dict; each mousemove re-adopts
+// that shared base (O(LAYERS×GRID_H)) and repaints the preview line, which clones
+// only the touched rows. Replaces the old per-frame full-grid .map(slice) +
+// structuredClone, the heaviest hot path during a shift-line drag.
 function _takeLinePreviewSnapshot() {
-  const layers = {};
-  for (const L of LAYERS) layers[L] = state.layers[L].map(r => r.slice());
-  linePreviewSnapshot = { layers, placements: structuredClone(state.placements) };
+  linePreviewSnapshot = cloneStateShallow();
+  _shareState();
 }
 function _restoreLinePreviewSnapshot() {
   if (!linePreviewSnapshot) return;
-  for (const L of LAYERS) state.layers[L] = linePreviewSnapshot.layers[L].map(r => r.slice());
-  state.placements = structuredClone(linePreviewSnapshot.placements);
+  adoptState(linePreviewSnapshot);
 }
 
 // ── Alt-key eyedropper (Photoshop-style) ──
@@ -565,13 +574,15 @@ let hoverCell = null;          // {x,y} or null — for cursor preview
 let underlayImage = null;
 let underlayVisible = true;
 let underlayOpacity = 0.5;
-let underlayAlignTop = false;  // false = vertically centered, true = pinned to top edge
+let underlayScale = 1;          // multiplies the image's native px size; top-left pinned (1 = native)
+let isResizingUnderlay = false; // true while dragging the bottom-right resize handle
 
 // ── Zoom ──────────────────────────────────────────────
 const ZOOM_MIN = 0.15;          // 15% — small enough to fit the full 630×630 grid on most screens
 const ZOOM_MAX = 4.0;           // 400%
 const ZOOM_STEP = 0.1;          // 10% per wheel notch
-const BASE_CANVAS_PX = GRID_W * CELL_PX;  // 2520 (630*4) — internal canvas size, unchanged by zoom
+const BASE_CANVAS_W = GRID_W * CELL_PX;  // 3528 (882*4) — internal canvas width, unchanged by zoom
+const BASE_CANVAS_H = GRID_H * CELL_PX;  // 3024 (756*4) — internal canvas height, unchanged by zoom
 let zoom = 1.0;
 
 // ── Panning (spacebar + drag) ─────────────────────────
@@ -676,7 +687,11 @@ function annLabelMetrics(size = annLabelSize) {
 
 function makeEmptyGrid() {
   const g = [];
-  for (let y = 0; y < GRID_H; y++) g.push(new Array(GRID_W).fill(null));
+  for (let y = 0; y < GRID_H; y++) {
+    const row = new Array(GRID_W).fill(null);
+    row._g = _stateGen;   // freshly created → owned by the current generation
+    g.push(row);
+  }
   return g;
 }
 function newPid() { return "p" + (++placementCounter); }
@@ -711,18 +726,35 @@ function stackAt(x, y) {
 // ═══════════════════════════════════════════════════════
 // Undo / Redo
 // ═══════════════════════════════════════════════════════
-// Shallow clone of state.placements — much faster than structuredClone since
-// each placement is a flat object (no nested arrays/objects we need to deep-copy).
-// On 10k cells this is ~10× faster, which matters because every paint stroke
-// calls pushUndo→snapshot.
+// Shallow clone of state.placements — each placement is a flat object, so a
+// per-key Object.assign beats structuredClone by ~10×. Captures get their OWN
+// placement objects, so in-place edits (rotation / group-move / grouping) never
+// corrupt a held snapshot — no per-mutation-site discipline needed.
 function clonePlacements(src) {
   const out = {};
   for (const pid in src) out[pid] = Object.assign({}, src[pid]);
   return out;
 }
-function snapshot() {
+// Clone-on-write a single layer row before mutating one of its cells. A row whose
+// _g matches the current generation is exclusively owned by the live state; a row
+// from an older generation is shared with a capture and is copied first.
+function ownRow(grid, y) {
+  let row = grid[y];
+  if (row && row._g !== _stateGen) {
+    row = grid[y] = row.slice();
+    row._g = _stateGen;
+  }
+  return row;
+}
+// Bump the generation so every layer row currently in the live state counts as
+// shared with the just-captured snapshot → the next cell write clones it.
+function _shareState() { _stateGen++; }
+
+// Capture current state: SHARE layer rows (O(LAYERS×GRID_H), diverged lazily via
+// ownRow) but eagerly copy the sparse placements dict so its objects stay pristine.
+function cloneStateShallow() {
   const layers = {};
-  LAYERS.forEach(L => layers[L] = state.layers[L].map(r => r.slice()));
+  for (const L of LAYERS) layers[L] = state.layers[L].slice();  // copy the row-ref array only
   return {
     layers,
     placements: clonePlacements(state.placements),
@@ -731,13 +763,26 @@ function snapshot() {
     groupColors: Object.assign({}, groupColors),
   };
 }
-function restore(snap) {
-  state.layers = {};
-  LAYERS.forEach(L => state.layers[L] = snap.layers[L].map(r => r.slice()));
+// Adopt a captured state object as the live state. Rows are shared (COW on next
+// write); placements are re-copied so the capture can be adopted again (redo /
+// per-frame line-preview restore) without aliasing.
+function adoptState(snap) {
+  const layers = {};
+  for (const L of LAYERS) layers[L] = snap.layers[L].slice();
+  state.layers = layers;
   state.placements = clonePlacements(snap.placements);
   placementCounter = snap.counter;
   if (snap.groupCounter !== undefined) groupCounter = snap.groupCounter;
   if (snap.groupColors !== undefined) groupColors = Object.assign({}, snap.groupColors);
+  _shareState();  // snap's rows are now shared with the live state
+}
+function snapshot() {
+  const snap = cloneStateShallow();
+  _shareState();  // current rows/dict are now shared with `snap`
+  return snap;
+}
+function restore(snap) {
+  adoptState(snap);
   // Stale selections after restore are confusing — clear them.
   selectedPids = new Set();
   invalidateSelectionBBox();
@@ -889,7 +934,7 @@ function clearCell(pid, x, y) {
   if (!p) return;
   const grid = state.layers[p.layer];
   if (!grid || !grid[y]) return;
-  if (grid[y][x] === pid) grid[y][x] = null;
+  if (grid[y][x] === pid) ownRow(grid, y)[x] = null;
   // If placement is 1×1, definitely empty now → delete
   if (p.footprint[0] === 1 && p.footprint[1] === 1) {
     delete state.placements[pid];
@@ -924,7 +969,7 @@ function placeCell(moduleId, x, y, z, layer) {
     yaw: 0,
     groupId: null,   // assigned later by Ctrl+G if user groups this placement
   };
-  grid[y][x] = pid;
+  ownRow(grid, y)[x] = pid;
   return true;
 }
 
@@ -1011,11 +1056,13 @@ const gridCanvas     = document.getElementById("canvas-grid");
 const canvas         = document.getElementById("canvas");
 const annCanvas      = document.getElementById("canvas-annotations");
 const cursorCanvas   = document.getElementById("canvas-cursor");
+const uhandleCanvas  = document.getElementById("canvas-uhandle");
 const underlayCtx    = underlayCanvas.getContext("2d");
 const gridCtx        = gridCanvas.getContext("2d");
 const ctx            = canvas.getContext("2d");
 const annCtx         = annCanvas.getContext("2d");
 const cursorCtx      = cursorCanvas.getContext("2d");
+const uhandleCtx     = uhandleCanvas.getContext("2d");
 
 // ── Grid (drawn once) ──────────────────────────────────
 function drawGrid() {
@@ -1057,22 +1104,58 @@ function drawGrid() {
 // ── Underlay (drawn on image load, opacity, toggle) ────
 function drawUnderlay() {
   underlayCtx.clearRect(0, 0, underlayCanvas.width, underlayCanvas.height);
+  if (underlayImage && underlayVisible) {
+    // Top-left pinned at (0,0); native px × underlayScale. Overflow is clipped.
+    const dw = underlayImage.naturalWidth  * underlayScale;
+    const dh = underlayImage.naturalHeight * underlayScale;
+    underlayCtx.imageSmoothingEnabled = false; // nearest-neighbor for pixel-perfect PNG
+    underlayCtx.globalAlpha = underlayOpacity;
+    underlayCtx.drawImage(underlayImage, 0, 0, dw, dh);
+    underlayCtx.globalAlpha = 1;
+  }
+  drawUnderlayHandle();
+}
+
+// ── Underlay resize handle ──
+// The reference image is pinned to the top-left; its size is underlayScale ×
+// native px. A grab handle sits at the bottom-right corner. Dragging it scales
+// the image: width snaps to whole grid cells, height follows the locked aspect
+// ratio. Drawn on its own topmost canvas (canvas-uhandle) so it never collides
+// with the heavily-optimized cursor overlay.
+const UH_HANDLE_HALF = 8;   // half-size of the square grab handle (canvas px)
+const UH_HANDLE_HIT  = 14;  // hit-test half-extent around the corner (canvas px)
+function underlayHandlePosPx() {
+  if (!underlayImage) return null;
+  return {
+    x: underlayImage.naturalWidth  * underlayScale,
+    y: underlayImage.naturalHeight * underlayScale,
+  };
+}
+function drawUnderlayHandle() {
+  uhandleCtx.clearRect(0, 0, uhandleCanvas.width, uhandleCanvas.height);
   if (!underlayImage || !underlayVisible) return;
-
-  const cw = underlayCanvas.width, ch = underlayCanvas.height;
-  const iw = underlayImage.naturalWidth, ih = underlayImage.naturalHeight;
-  // Fit preserving aspect ratio
-  const scale = Math.min(cw / iw, ch / ih);
-  const dw = iw * scale, dh = ih * scale;
-  // X stays centered; Y can be pinned to top (dy=0) so the image hugs the top
-  // edge — useful when the reference screenshot's relevant content is at the top.
-  const dx = (cw - dw) / 2;
-  const dy = underlayAlignTop ? 0 : (ch - dh) / 2;
-
-  underlayCtx.imageSmoothingEnabled = false; // nearest-neighbor for pixel-perfect 128px PNG
-  underlayCtx.globalAlpha = underlayOpacity;
-  underlayCtx.drawImage(underlayImage, dx, dy, dw, dh);
-  underlayCtx.globalAlpha = 1;
+  const p = underlayHandlePosPx();
+  // Dashed bbox so the image's current extent stays visible.
+  uhandleCtx.setLineDash([6, 4]);
+  uhandleCtx.lineWidth = 1.5;
+  uhandleCtx.strokeStyle = "rgba(0,224,255,0.55)";
+  uhandleCtx.strokeRect(0.75, 0.75, p.x, p.y);
+  uhandleCtx.setLineDash([]);
+  // Bottom-right grab handle.
+  const s = UH_HANDLE_HALF;
+  uhandleCtx.fillStyle   = isResizingUnderlay ? "#00e0ff" : "rgba(0,224,255,0.9)";
+  uhandleCtx.fillRect(p.x - s, p.y - s, s * 2, s * 2);
+  uhandleCtx.lineWidth = 1.5;
+  uhandleCtx.strokeStyle = "#04303a";
+  uhandleCtx.strokeRect(p.x - s, p.y - s, s * 2, s * 2);
+}
+function hitTestUnderlayHandle(e) {
+  if (!underlayImage || !underlayVisible || isResizingUnderlay) return false;
+  const p = underlayHandlePosPx(); if (!p) return false;
+  const r = getCanvasRect();
+  const mx = (e.clientX - r.left) / zoom;
+  const my = (e.clientY - r.top)  / zoom;
+  return Math.abs(mx - p.x) <= UH_HANDLE_HIT && Math.abs(my - p.y) <= UH_HANDLE_HIT;
 }
 
 // ── Placements (drawn on every change) ─────────────────
@@ -2363,6 +2446,16 @@ canvas.addEventListener("mousedown", (e) => {
 
   const { x, y } = mouseToCell(e);
 
+  // ── Underlay resize handle (bottom-right corner) — works in any tool, so
+  //    it's checked before tool/inBounds logic. Left button only. ──
+  if (e.button === 0 && hitTestUnderlayHandle(e)) {
+    isResizingUnderlay = true;
+    canvas.style.cursor = "nwse-resize";
+    setStatus("밑그림 크기 조절 · 드래그 (가로 칸 스냅, 비율 고정)");
+    drawUnderlayHandle();
+    return;
+  }
+
   // ── Rotation handle hit (must be checked BEFORE inBounds, because the
   //    handles are drawn OUTSIDE the selection bbox and may land on cells
   //    >= GRID_W/H for selections at the right/bottom edge). ──
@@ -2562,6 +2655,20 @@ canvas.addEventListener("mousemove", (e) => {
     return;
   }
 
+  // Underlay resize drag — width snaps to whole grid cells; height follows the
+  // image's locked aspect ratio. Top-left stays pinned at (0,0).
+  if (isResizingUnderlay && underlayImage) {
+    const r = getCanvasRect();
+    const mx = (e.clientX - r.left) / zoom;       // canvas px
+    const iw = underlayImage.naturalWidth, ih = underlayImage.naturalHeight;
+    const cells = Math.max(1, Math.round(mx / CELL_PX));
+    underlayScale = (cells * CELL_PX) / iw;
+    drawUnderlay();
+    const hCells = (ih * underlayScale) / CELL_PX;
+    setStatus(`밑그림: ${cells} × ${hCells.toFixed(1)} 칸 (×${underlayScale.toFixed(3)})`);
+    return;
+  }
+
   // Quick distance measure (middle mouse drag) — update endpoint + overlay
   // then short-circuit so other tools don't react during the drag.
   if (isQuickMeasuring) {
@@ -2734,6 +2841,14 @@ canvas.addEventListener("mouseleave", () => {
 });
 
 window.addEventListener("mouseup", (e) => {
+  // Underlay resize finished — commit the scale and release the drag.
+  if (isResizingUnderlay) {
+    isResizingUnderlay = false;
+    canvas.style.cursor = "";
+    drawUnderlayHandle();
+    setStatus(`밑그림 크기 고정 · ×${underlayScale.toFixed(3)}`);
+    return;
+  }
   if (isPanning) {
     isPanning = false;
     panStart = null;
@@ -3093,9 +3208,8 @@ function applyZoom(newZoom, clientX, clientY) {
 
   // Apply new zoom by resizing the wrap (canvases inherit 100% width/height)
   zoom = clamped;
-  const sizePx = BASE_CANVAS_PX * zoom;
-  wrap.style.width  = sizePx + "px";
-  wrap.style.height = sizePx + "px";
+  wrap.style.width  = (BASE_CANVAS_W * zoom) + "px";
+  wrap.style.height = (BASE_CANVAS_H * zoom) + "px";
 
   // Adjust scroll so the same world point stays under the cursor
   const newRect = wrap.getBoundingClientRect();
@@ -3112,15 +3226,15 @@ function applyZoom(newZoom, clientX, clientY) {
 
 function initCanvasSize() {
   const wrap = document.getElementById("canvas-wrap");
-  wrap.style.width  = BASE_CANVAS_PX + "px";
-  wrap.style.height = BASE_CANVAS_PX + "px";
+  wrap.style.width  = BASE_CANVAS_W + "px";
+  wrap.style.height = BASE_CANVAS_H + "px";
   // Sync internal canvas resolution with grid × cell_px (HTML width/height attrs).
   // Without this, when GRID_W changes the canvas still renders at the original
   // attribute size and gets stretched.
-  ["canvas-underlay", "canvas-grid", "canvas", "canvas-annotations", "canvas-cursor"].forEach(id => {
+  ["canvas-underlay", "canvas-grid", "canvas", "canvas-annotations", "canvas-cursor", "canvas-uhandle"].forEach(id => {
     const c = document.getElementById(id);
-    c.width = BASE_CANVAS_PX;
-    c.height = BASE_CANVAS_PX;
+    c.width = BASE_CANVAS_W;
+    c.height = BASE_CANVAS_H;
   });
 }
 
@@ -3268,7 +3382,7 @@ function buildTilemapJson() {
       dataURL:  underlayToDataURL(),
       visible:  underlayVisible,
       opacity:  underlayOpacity,
-      alignTop: underlayAlignTop,
+      scale:    underlayScale,
     } : null,
   };
   return { json: JSON.stringify(data, null, 2), count: placements.length };
@@ -3455,7 +3569,7 @@ function serializeStateAsJson() {
       dataURL:  underlayToDataURL(),
       visible:  underlayVisible,
       opacity:  underlayOpacity,
-      alignTop: underlayAlignTop,
+      scale:    underlayScale,
     } : null,
     autosavedAt: new Date().toISOString(),
   });
@@ -3606,13 +3720,11 @@ function restoreUnderlayFromData(u) {
     underlayImage    = img;
     underlayVisible  = u.visible !== false;
     underlayOpacity  = (typeof u.opacity === "number") ? u.opacity : 0.5;
-    underlayAlignTop = !!u.alignTop;
+    underlayScale    = (typeof u.scale === "number" && u.scale > 0) ? u.scale : 1;
     const tog   = document.getElementById("img-toggle");
-    const align = document.getElementById("img-align-top");
     const op    = document.getElementById("img-opacity");
     const opVal = document.getElementById("opacity-val");
     if (tog)   tog.checked   = underlayVisible;
-    if (align) align.checked = underlayAlignTop;
     if (op)    op.value      = Math.round(underlayOpacity * 100);
     if (opVal) opVal.textContent = Math.round(underlayOpacity * 100) + "%";
     drawUnderlay();
@@ -3626,6 +3738,7 @@ function loadUnderlayImage(file) {
   const img = new Image();
   img.onload = () => {
     underlayImage = img;
+    underlayScale = 1;   // a freshly loaded image starts at native size
     drawUnderlay();
     setStatus(`밑그림 로드: ${img.naturalWidth}×${img.naturalHeight} (${file.name})`);
     // URL kept alive — img holds the reference; revoked on clear
@@ -3646,11 +3759,6 @@ document.getElementById("img-input").addEventListener("change", (e) => {
 document.getElementById("img-toggle").addEventListener("change", (e) => {
   underlayVisible = e.target.checked;
   drawUnderlay();
-});
-document.getElementById("img-align-top").addEventListener("change", (e) => {
-  underlayAlignTop = e.target.checked;
-  drawUnderlay();
-  setStatus(underlayAlignTop ? "📌 밑그림 상단 정렬" : "📌 밑그림 중앙 정렬");
 });
 document.getElementById("img-opacity").addEventListener("input", (e) => {
   underlayOpacity = e.target.value / 100;
@@ -3863,7 +3971,7 @@ drawAnnotations();
 updateMeasurePanel();
 updateAnnotationList();
 updateCellInfo(-1, -1);
-setStatus("630×630 그리드 · 휠로 줌, 좌측 팔레트에서 모듈 선택");
+setStatus("882×756 그리드 · 휠로 줌, 좌측 팔레트에서 모듈 선택");
 
 // Restore previously saved directory handle from IndexedDB (non-blocking).
 _loadDirHandle().then(handle => {
